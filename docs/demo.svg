@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 220" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+  <style>
+    .bg { fill: #0d1117; }
+    .box { fill: #161b22; stroke: #30363d; stroke-width: 1.5; rx: 8; }
+    .label { fill: #e6edf3; font-size: 13px; font-weight: 600; }
+    .sub { fill: #8b949e; font-size: 10px; }
+    .arrow { stroke: #30363d; stroke-width: 2; marker-end: url(#a); }
+    .title { fill: #e6edf3; font-size: 15px; font-weight: 700; }
+    #s1 { animation: g1 6s infinite; } #s2 { animation: g2 6s infinite; }
+    #s3 { animation: g3 6s infinite; } #s4 { animation: g4 6s infinite; }
+    #s5 { animation: g5 6s infinite; } #s6 { animation: g6 6s infinite; }
+    @keyframes g1 {0%,10%{stroke:#2f81f7}12%,100%{stroke:#30363d}}
+    @keyframes g2 {14%,24%{stroke:#2f81f7}0%,12%,26%,100%{stroke:#30363d}}
+    @keyframes g3 {28%,40%{stroke:#f85149}0%,26%,42%,100%{stroke:#30363d}}
+    @keyframes g4 {44%,54%{stroke:#f85149}0%,42%,56%,100%{stroke:#30363d}}
+    @keyframes g5 {58%,72%{stroke:#d29922}0%,56%,74%,100%{stroke:#30363d}}
+    @keyframes g6 {76%,92%{stroke:#3fb950}0%,74%,94%,100%{stroke:#30363d}}
+  </style>
+  <defs>
+    <marker id="a" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#30363d"/>
+    </marker>
+  </defs>
+  <rect class="bg" x="0" y="0" width="920" height="220"/>
+  <text class="title" x="24" y="34">OpsForge Nexus — incident intelligence pipeline</text>
+
+  <!-- boxes -->
+  <g>
+    <rect id="s1" class="box" x="24"  y="70" width="130" height="66" rx="8"/>
+    <text class="label" x="42" y="100">Deploy</text>
+    <text class="sub"   x="42" y="118">blue-green SM</text>
+
+    <rect id="s2" class="box" x="178" y="70" width="130" height="66" rx="8"/>
+    <text class="label" x="196" y="100">Health gate</text>
+    <text class="sub"   x="196" y="118">polls 60s ✗</text>
+
+    <rect id="s3" class="box" x="332" y="70" width="130" height="66" rx="8"/>
+    <text class="label" x="350" y="100">Rollback</text>
+    <text class="sub"   x="350" y="118">3-strike + cooldown</text>
+
+    <rect id="s4" class="box" x="486" y="70" width="130" height="66" rx="8"/>
+    <text class="label" x="504" y="100">Incident</text>
+    <text class="sub"   x="504" y="118">auto-opened</text>
+
+    <rect id="s5" class="box" x="640" y="70" width="130" height="66" rx="8"/>
+    <text class="label" x="658" y="100">RCA</text>
+    <text class="sub"   x="658" y="118">signals → LLM</text>
+
+    <rect id="s6" class="box" x="794" y="70" width="102" height="66" rx="8"/>
+    <text class="label" x="812" y="100">Impact</text>
+    <text class="sub"   x="812" y="118">$ + audit</text>
+  </g>
+
+  <!-- arrows -->
+  <line class="arrow" x1="156" y1="103" x2="176" y2="103"/>
+  <line class="arrow" x1="310" y1="103" x2="330" y2="103"/>
+  <line class="arrow" x1="464" y1="103" x2="484" y2="103"/>
+  <line class="arrow" x1="618" y1="103" x2="638" y2="103"/>
+  <line class="arrow" x1="772" y1="103" x2="792" y2="103"/>
+
+  <text class="sub" x="24" y="176">Structured signal collection happens BEFORE the LLM call — with a rule-based fallback if the model is unavailable.</text>
+  <text class="sub" x="24" y="196">FastAPI · React · PostgreSQL · n8n · Claude   —   29 tests green · CI on every push</text>
+</svg>

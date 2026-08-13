@@ -1,0 +1,117 @@
+{
+  "name": "OpsForge — Incident RCA Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "opsforge-incident",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Incident Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 300],
+      "webhookId": "opsforge-incident"
+    },
+    {
+      "parameters": {
+        "url": "=http://backend:8000/incidents/{{ $json.body.incident_id }}",
+        "options": {}
+      },
+      "id": "fetch-incident",
+      "name": "Fetch Incident Context",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://backend:8000/incidents/{{ $('Incident Webhook Trigger').item.json.body.incident_id }}/trigger-rca",
+        "options": {}
+      },
+      "id": "trigger-rca",
+      "name": "Trigger RCA Engine",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [640, 220]
+    },
+    {
+      "parameters": {
+        "url": "=http://backend:8000/incidents/{{ $('Incident Webhook Trigger').item.json.body.incident_id }}/business-impact",
+        "options": {}
+      },
+      "id": "fetch-impact",
+      "name": "Fetch Business Impact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [640, 380]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Combine RCA + impact into a single report payload.\nconst incidentId = $('Incident Webhook Trigger').item.json.body.incident_id;\nconst rca = $('Trigger RCA Engine').item.json;\nconst impact = $('Fetch Business Impact').item.json;\nconst top = (rca.root_cause_candidates && rca.root_cause_candidates[0]) || {};\nreturn [{ json: {\n  incident_id: incidentId,\n  summary: `Top cause: ${top.cause || 'unknown'} (${top.confidence || 'n/a'})`,\n  estimated_impact_value: impact.estimated_impact_value,\n  rca_report: rca,\n  business_impact: impact,\n  notified: true\n} }];"
+      },
+      "id": "combine",
+      "name": "Combine Report",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [860, 300]
+    },
+    {
+      "parameters": {
+        "content": "=🚨 *OpsForge incident* `{{ $json.incident_id }}`\n{{ $json.summary }}\nEstimated impact: ${{ $json.estimated_impact_value }}",
+        "options": {}
+      },
+      "id": "notify",
+      "name": "Notify (Slack/Email/webhook)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1080, 220],
+      "notes": "Swap this NoOp for a real Slack/Email node once credentials exist. Mocked by default (see 'What NOT to Build')."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://backend:8000/webhooks/n8n-callback",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ incident_id: $json.incident_id, rca_report: $json.rca_report, business_impact: $json.business_impact, notified: true }) }}",
+        "options": {}
+      },
+      "id": "store-callback",
+      "name": "Store Combined Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1080, 380]
+    }
+  ],
+  "connections": {
+    "Incident Webhook Trigger": {
+      "main": [[{ "node": "Fetch Incident Context", "type": "main", "index": 0 }]]
+    },
+    "Fetch Incident Context": {
+      "main": [[
+        { "node": "Trigger RCA Engine", "type": "main", "index": 0 },
+        { "node": "Fetch Business Impact", "type": "main", "index": 0 }
+      ]]
+    },
+    "Trigger RCA Engine": {
+      "main": [[{ "node": "Combine Report", "type": "main", "index": 0 }]]
+    },
+    "Fetch Business Impact": {
+      "main": [[{ "node": "Combine Report", "type": "main", "index": 0 }]]
+    },
+    "Combine Report": {
+      "main": [[
+        { "node": "Notify (Slack/Email/webhook)", "type": "main", "index": 0 },
+        { "node": "Store Combined Report", "type": "main", "index": 0 }
+      ]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "versionId": "opsforge-v1",
+  "meta": { "description": "Fetch incident -> RCA -> business impact -> notify -> store combined report back to backend." }
+}

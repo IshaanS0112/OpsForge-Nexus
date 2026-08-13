@@ -1,0 +1,9 @@
+# Without this, `COPY . .` overwrites the node_modules that `npm install` just
+# built inside the image with the host's - which resolves native binaries
+# (esbuild, rollup) for the host platform, not the image's. Also keeps the
+# build context small.
+node_modules
+dist
+.env
+.DS_Store
+npm-debug.log*
