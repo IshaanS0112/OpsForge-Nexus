@@ -29,7 +29,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # single-tenant portfolio scope; lock down for prod
+    allow_origins=["*"],  # single-tenant MVP scope; restrict for production
     allow_methods=["*"],
     allow_headers=["*"],
 )

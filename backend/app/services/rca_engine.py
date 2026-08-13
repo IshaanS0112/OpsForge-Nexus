@@ -1,7 +1,7 @@
 """RCA engine — structured signal collection BEFORE any LLM call.
 
-This is the module that decides whether the project is real engineering or a
-prompt wrapper. The order is enforced:
+RCA is signal-driven, not a prompt wrapper: correlated signals are collected and
+structured before the model is ever called. The order is enforced:
 
   Step 1  define the lookback window
   Step 2  collect *structured* signals (deployment, metric anomalies, top error
@@ -11,7 +11,7 @@ prompt wrapper. The order is enforced:
 
 If the LLM is unavailable or returns junk, ``_rule_based_fallback`` ranks
 candidates by deployment proximity so the system degrades gracefully instead of
-returning nothing (interview question #6).
+returning nothing.
 """
 from __future__ import annotations
 

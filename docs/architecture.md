@@ -1,8 +1,7 @@
 # OpsForge Nexus — Architecture
 
-This document explains the five modules that must be *real* engineering, the
-data model, the request flows, and prepared answers to the interview questions
-this project is designed to withstand.
+This document explains the five modules that carry the real logic, the data
+model, the request flows, and the key design decisions behind them.
 
 ---
 
@@ -188,7 +187,7 @@ orchestration lives in n8n.
 
 ---
 
-## What NOT to build (V1 scope discipline)
+## Non-goals (V1 scope)
 
 - No real Kubernetes orchestration — deployment states are simulated.
 - No multi-cloud, no real load-balancer integration (traffic switch is a flag).
@@ -204,34 +203,32 @@ detection; ML-based anomaly detection; Redis-backed cooldown/streak state.
 
 ---
 
-## Interview questions
+## Design decisions
 
-1. **Walk me through the blue-green state machine.** IDLE → PREPARING_GREEN →
-   DEPLOYING_GREEN → HEALTH_CHECKING → TRAFFIC_SWITCHING → LIVE, with a rollback
-   branch out of the middle states; transitions are allow-listed and illegal
-   jumps raise.
-2. **What triggers an automatic rollback / how do you avoid false positives?**
-   Four concrete conditions (table above). False positives are avoided by
-   *sustained-window* thresholds (30s / 60s) and the 3-strike health rule, not
-   single-sample reactions.
-3. **Why z-score over a fixed threshold, and the tradeoff?** Per-service
-   adaptivity vs needing baseline history and weakness under seasonality.
-4. **Is RCA just prompting an LLM with logs?** No — structured signal collection
-   (deploy + z-scored anomalies + counted error signatures + correlation flag)
-   happens before any LLM call.
-5. **How do you rank candidates / what's the confidence based on?** The LLM ranks
-   top-3 and must cite specific evidence (error counts, z-scores, deploy
-   proximity); the fallback ranks by deployment proximity and error dominance.
-6. **What if the LLM call fails?** Rule-based fallback returns ranked candidates;
+1. **Blue-green state machine.** IDLE → PREPARING_GREEN → DEPLOYING_GREEN →
+   HEALTH_CHECKING → TRAFFIC_SWITCHING → LIVE, with a rollback branch out of the
+   middle states; transitions are allow-listed and illegal jumps raise.
+2. **Rollback triggers and false-positive avoidance.** Four concrete conditions
+   (table above). False positives are avoided by *sustained-window* thresholds
+   (30s / 60s) and the 3-strike health rule, not single-sample reactions.
+3. **Z-score over a fixed threshold.** Chosen for per-service adaptivity; the
+   tradeoff is needing baseline history and weakness under seasonality.
+4. **Structured RCA, not log-prompting.** Structured signal collection (deploy +
+   z-scored anomalies + counted error signatures + correlation flag) happens
+   before any LLM call.
+5. **Candidate ranking and confidence.** The LLM ranks top-3 and must cite
+   specific evidence (error counts, z-scores, deploy proximity); the fallback
+   ranks by deployment proximity and error dominance.
+6. **LLM failure handling.** The rule-based fallback returns ranked candidates;
    the report records that the fallback was used.
-7. **Where do the revenue numbers come from?** A configurable parameter; the
-   framework and audit trail matter, real conversion data replaces the constant.
-8. **Why n8n instead of backend functions?** Human-visible, editable multi-step
-   orchestration; core logic stays in the backend.
-9. **How do you prevent a rollback → anomaly → rollback loop?** Post-rollback
-   cooldown suppresses automatic triggers for 5 minutes.
-10. **How would this scale to 100 services?** Per-service rolling windows and
-    cooldown state move to Redis; metric ingestion moves behind a queue; the
-    detector is stateless per service; the dependency graph (V2) handles
-    cascading incidents.
+7. **Business-impact inputs.** `revenue_per_request` is a configurable
+   parameter; the framework and audit trail are the point — real conversion data
+   replaces the constant in production.
+8. **n8n over in-backend functions.** Human-visible, editable multi-step
+   orchestration; core detection/rollback logic stays in the backend.
+9. **Preventing rollback → anomaly → rollback loops.** A post-rollback cooldown
+   suppresses automatic triggers for 5 minutes.
+10. **Scaling to 100 services.** Per-service rolling windows and cooldown state
+    move to Redis; metric ingestion moves behind a queue; the detector is
+    stateless per service; the dependency graph (V2) handles cascading incidents.
 ```

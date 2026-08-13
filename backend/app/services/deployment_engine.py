@@ -1,6 +1,6 @@
 """Blue-green deployment engine.
 
-State machine (interview question #1):
+State machine:
 
     IDLE -> PREPARING_GREEN -> DEPLOYING_GREEN -> HEALTH_CHECKING
          -> TRAFFIC_SWITCHING -> LIVE

@@ -1,5 +1,5 @@
 """Central configuration. All tunable thresholds live here so the engines stay
-declarative and the values are auditable / documentable for interviews."""
+declarative and the values are auditable and easy to tune per environment."""
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 

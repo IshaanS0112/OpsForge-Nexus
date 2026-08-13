@@ -20,9 +20,10 @@ pluggable simulator. That boundary is documented in
 
 ---
 
-## Why this is not a "prompt wrapper"
+## How RCA works — structured signals before the LLM
 
-The RCA engine's credibility rests on **order of operations**:
+The RCA engine is signal-driven, not a prompt wrapper. It rests on a strict
+**order of operations**:
 
 1. Define a lookback window around the incident.
 2. Collect *structured* signals — recent deployment + config diff, z-scored
@@ -137,10 +138,10 @@ Or drive the anomaly-detector path with the simulated generator:
 python scripts/metric_generator.py --service payments --inject
 ```
 
-## Proof the RCA is real (not just wired)
+## Capture a real LLM RCA sample
 
 The RCA engine collects structured signals and then calls a real LLM. To capture
-that output as an artifact:
+that output as a committed sample:
 
 ```bash
 # backend must run WITH a real key so the LLM path (not the fallback) executes
@@ -190,20 +191,20 @@ portable ORM runs on SQLite (tests) and PostgreSQL (prod).
 | **Structured** RCA signal collection before the LLM | Single service, single tenant |
 | Business-impact formula with auditable `calculation_basis` | `revenue_per_request` is a configurable mock |
 
-See [What NOT to Build](docs/architecture.md#what-not-to-build-v1-scope-discipline)
-for the full scope discipline and the V2 roadmap (real K8s, canary %, dependency
-graph, ML-based detection).
+See [Non-goals](docs/architecture.md#non-goals-v1-scope) for the full scope
+boundaries and the V2 roadmap (real K8s, canary %, dependency graph, ML-based
+detection).
 
 ---
 
-## Interview questions this project answers
+## Design decisions
 
-The 10 questions a DevOps/SRE interviewer will ask — and where each is answered
-in code — live in [`docs/architecture.md`](docs/architecture.md#interview-questions).
-Short version: rollback avoids false positives via sustained-window thresholds
-and a post-rollback cooldown; z-score is chosen over fixed thresholds for
-per-service adaptivity (tradeoff: needs baseline history, weak under
-seasonality); RCA is structured-first with a graceful fallback.
+The key design decisions and their rationale — mapped to where each lives in
+code — are in [`docs/architecture.md`](docs/architecture.md#design-decisions).
+In short: rollback avoids false positives via sustained-window thresholds and a
+post-rollback cooldown; z-score is chosen over fixed thresholds for per-service
+adaptivity (tradeoff: needs baseline history, weak under seasonality); RCA is
+structured-first with a graceful fallback.
 
 ---
 

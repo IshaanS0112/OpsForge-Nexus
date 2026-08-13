@@ -1,6 +1,6 @@
 """Business impact calculator.
 
-Formula (interview question #7 — be honest about the assumptions):
+Formula (assumptions are explicit and stored with every result):
 
     affected_requests   = COUNT(requests during incident window)
     error_rate_delta    = incident_period_error_rate - baseline_error_rate

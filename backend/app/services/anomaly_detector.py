@@ -1,6 +1,6 @@
 """Z-score based anomaly detection.
 
-Design note (interview): we use an adaptive z-score per metric instead of a
+Design note: we use an adaptive z-score per metric instead of a
 fixed threshold so each service is judged against *its own* baseline. This
 avoids per-service manual tuning. Known tradeoff: it needs enough history for a
 stable baseline and degrades under strong seasonality (daily traffic cycles).

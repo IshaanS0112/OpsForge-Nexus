@@ -3,7 +3,7 @@
 Every trigger records the *exact* condition and value that fired, so an
 incident's ``trigger_reason`` is auditable rather than "something looked bad".
 
-Anti-flapping (interview question #9): after a rollback we suppress further
+Anti-flapping: after a rollback we suppress further
 auto-rollback triggers for a cooldown window, otherwise a rollback can induce a
 transient anomaly that triggers another rollback — a loop. The cooldown is kept
 here in-memory for the MVP; a note in the docs explains prod would persist it

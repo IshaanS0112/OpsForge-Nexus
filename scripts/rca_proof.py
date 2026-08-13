@@ -2,8 +2,8 @@
 """One-command proof that the RCA engine actually talks to a real LLM.
 
 Runs a failing deployment, waits for the auto-created incident, triggers the
-RCA pipeline, and saves the ranked output to docs/rca_sample.json — the artifact
-you cite in interviews as proof the depth claim is real, not just wired.
+RCA pipeline, and saves the ranked output to docs/rca_sample.json as a committed
+sample that the RCA runs against a real model, not just the rule-based fallback.
 
 Prereq: the backend must be running WITH a real key so the LLM path (not the
 fallback) executes:
@@ -66,8 +66,8 @@ def main() -> int:
         print(
             "\n⚠  RCA used the RULE-BASED FALLBACK, not a real LLM.\n"
             "   Set ANTHROPIC_API_KEY on the backend and re-run to capture the\n"
-            "   real LLM output. (The fallback proves graceful degradation, but\n"
-            "   the interview claim needs the real model path.)"
+            "   real LLM output. (The fallback proves graceful degradation; this\n"
+            "   sample is meant to capture the real model path.)"
         )
         return 2
 
