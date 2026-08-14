@@ -1,22 +1,35 @@
 # OpsForge Nexus
 
-**AI-powered release, reliability & incident intelligence platform.**
+**Release, reliability & incident intelligence — blue-green deployments with
+health-gated automatic rollback, z-score anomaly detection, and a structured
+root-cause pipeline that collects correlated signals before it ever calls an LLM.**
+
+FastAPI · React + TypeScript · PostgreSQL · n8n · Docker · Claude · 29 tests
 
 [![CI](https://github.com/IshaanS0112/OpsForge-Nexus/actions/workflows/ci.yml/badge.svg)](https://github.com/IshaanS0112/OpsForge-Nexus/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org)
 
-![OpsForge pipeline](docs/demo.svg)
+---
 
-OpsForge simulates a production reliability system: blue-green deployments with
-a health-check-gated traffic switch, automatic rollback on concrete thresholds,
-z-score anomaly detection, and a **structured** root-cause analysis pipeline
-that collects correlated signals *before* it ever calls an LLM.
+## Why I built this
 
-The state machine, health gate, rollback logic, anomaly detector, and RCA
-signal collection are **real engineering**. What is simulated — deliberately and
-explicitly — is the underlying infrastructure: there is no Kubernetes cluster,
-traffic switching is a flag flip, and health/metric samples come from a
-pluggable simulator. That boundary is documented in
-[What is real vs simulated](#what-is-real-vs-simulated).
+Most "AI incident tooling" I read about works one way: dump the logs into an LLM
+and print whatever comes back. That bothered me, because the useful part of a
+root-cause analysis isn't the prose — it's the correlation done *before* anyone
+writes a sentence: which deploy landed just before the error rate moved, which
+error signature dominates, whether the metrics are genuinely anomalous or just
+noisy.
+
+So I built the version where that correlation is real code and the model only
+enters at the end. The blue-green deployment engine, health-gated rollback,
+z-score anomaly detection, and signal collection are ordinary backend
+engineering; the LLM receives an already-assembled, structured incident context
+and ranks causes over it — and if it's unavailable, a rule-based fallback ranks
+the same signals. The infrastructure it runs on is simulated on purpose (there is
+no Kubernetes cluster; traffic switching is a flag flip; health and metric
+samples come from a pluggable simulator) — the detection and rollback logic are
+not. That boundary is spelled out in [What is real vs simulated](#what-is-real-vs-simulated).
 
 ---
 
@@ -148,20 +161,13 @@ that output as a committed sample:
 cd backend && export ANTHROPIC_API_KEY=sk-ant-... && HEALTH_CHECK_FAST=1 uvicorn app.main:app
 
 # then, from the repo root:
-python scripts/rca_proof.py      # writes docs/rca_sample.json
+python scripts/capture_rca_sample.py      # writes docs/rca_sample.json
 ```
 
-`rca_proof.py` runs a failing deploy, waits for the auto-created incident, runs
-RCA, and saves the ranked candidates to `docs/rca_sample.json`. It warns loudly
-if the rule-based fallback was used (i.e. no key), so the committed sample is
+`capture_rca_sample.py` runs a failing deploy, waits for the auto-created
+incident, runs RCA, and saves the ranked candidates to `docs/rca_sample.json`. It
+warns if the rule-based fallback was used (i.e. no key), so a committed sample is
 always a real model run.
-
-## Record the demo GIF
-
-With the stack up (`docker compose up`), record the dashboard flow with any
-screen recorder (macOS: Cmd-Shift-5; or [`vhs`](https://github.com/charmbracelet/vhs)
-for a terminal GIF of `scripts/demo.sh`). Save it as `docs/demo.gif` and swap the
-banner at the top of this README from `docs/demo.svg` to `docs/demo.gif`.
 
 ---
 
@@ -173,10 +179,10 @@ pip install -r requirements.txt
 pytest
 ```
 
-28 tests cover the state machine (legal/illegal transitions, health gate),
-rollback triggers + cooldown/anti-flap, z-score + streak logic, the RCA
-fallback and JSON parsing, the impact formula, and the full API flow. The same
-portable ORM runs on SQLite (tests) and PostgreSQL (prod).
+29 tests cover the state machine (legal/illegal transitions, the health gate and
+its real inter-poll timing), rollback triggers + cooldown/anti-flap, z-score +
+streak logic, the RCA fallback and JSON parsing, the impact formula, and the full
+API flow. The same portable ORM runs on SQLite (tests) and PostgreSQL (prod).
 
 ---
 

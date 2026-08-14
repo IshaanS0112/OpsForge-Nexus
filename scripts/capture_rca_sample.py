@@ -14,7 +14,7 @@ fallback) executes:
 
 Then, from the repo root:
 
-    python scripts/rca_proof.py
+    python scripts/capture_rca_sample.py
 """
 from __future__ import annotations
 
