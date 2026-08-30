@@ -2,8 +2,10 @@
 """One-command proof that the RCA engine actually talks to a real LLM.
 
 Runs a failing deployment, waits for the auto-created incident, triggers the
-RCA pipeline, and saves the ranked output to docs/rca_sample.json as a committed
-sample that the RCA runs against a real model, not just the rule-based fallback.
+RCA pipeline, and writes the ranked output to docs/rca_sample.json. The sample
+is evidence that RCA ran against a real model rather than the rule-based
+fallback; it is deliberately not committed, since it would embed one account's
+model output in the repository.
 
 Prereq: the backend must be running WITH a real key so the LLM path (not the
 fallback) executes:
