@@ -53,7 +53,7 @@ def get_incident(incident_id: str, db: Session = Depends(get_db)):
     timeline = _build_timeline(db, incident)
 
     detail = IncidentDetail.model_validate(incident)
-    detail.logs = [LogOut.model_validate(l) for l in logs]
+    detail.logs = [LogOut.model_validate(log) for log in logs]
     detail.metrics = [MetricOut.model_validate(m) for m in metrics]
     detail.timeline = timeline
     return detail

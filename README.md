@@ -153,8 +153,8 @@ python scripts/metric_generator.py --service payments --inject
 
 ## Capture a real LLM RCA sample
 
-The RCA engine collects structured signals and then calls a real LLM. To capture
-that output as a committed sample:
+The RCA engine collects structured signals and then calls a real LLM. To see
+that output for yourself rather than taking the description above on trust:
 
 ```bash
 # backend must run WITH a real key so the LLM path (not the fallback) executes
@@ -165,9 +165,13 @@ python scripts/capture_rca_sample.py      # writes docs/rca_sample.json
 ```
 
 `capture_rca_sample.py` runs a failing deploy, waits for the auto-created
-incident, runs RCA, and saves the ranked candidates to `docs/rca_sample.json`. It
-warns if the rule-based fallback was used (i.e. no key), so a committed sample is
-always a real model run.
+incident, runs RCA, and writes the ranked candidates to `docs/rca_sample.json`.
+It warns if the rule-based fallback was used (i.e. no key), so any sample it
+produces is either a genuine model run or explicitly flagged as not one.
+
+No sample is committed to this repository — it would embed one account's model
+output as though it were a property of the code, and the point of the script is
+that you can generate it yourself.
 
 ---
 

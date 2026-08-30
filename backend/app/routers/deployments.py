@@ -57,7 +57,7 @@ def manual_rollback(deployment_id: str, db: Session = Depends(get_db)):
 
     decision = rollback_engine.evaluate(dep.service_name, manual=True)
     dep.status = DeployState.ROLLED_BACK.value
-    incident = _open_incident(db, dep, decision.reason)
+    _open_incident(db, dep, decision.reason)
     rollback_engine.start_cooldown(dep.service_name)
     db.commit()
     db.refresh(dep)
