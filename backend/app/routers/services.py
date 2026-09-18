@@ -1,6 +1,6 @@
 """Service, dependency-graph, SLO and anomaly-consensus endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -139,6 +139,19 @@ def slo_burn_rate(name: str, db: Session = Depends(get_db), rt: Runtime = Depend
             for a in alerts
         ],
     }
+
+
+@router.get("/{name}/burn-rate-history")
+def burn_rate_history(
+    name: str,
+    minutes: int = Query(60, ge=5, le=1440),
+    step_s: int = Query(30, ge=5, le=600),
+    db: Session = Depends(get_db),
+    rt: Runtime = Depends(get_runtime),
+):
+    """The FAST_BURN pair (1h and 5m burn rates) over time, for charting."""
+    _known(rt, db, name)
+    return rt.burn.history(db, name, utcnow(), minutes=minutes, step_s=step_s)
 
 
 @router.put("/{name}/slo")

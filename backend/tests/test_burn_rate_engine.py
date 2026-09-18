@@ -1,5 +1,6 @@
 """SLO burn-rate alerting (Google SRE Workbook ch.5) and the canary gate."""
 
+import math
 from datetime import datetime, timedelta
 
 import pytest
@@ -13,7 +14,8 @@ from app.services.burn_rate_engine import (
     burn_rate,
     evaluate_canary_gate,
     evaluate_policy,
-    wilson_lower_bound,
+    sprt_fail_boundary,
+    sprt_llr,
     worst_firing,
 )
 
@@ -91,9 +93,32 @@ def test_short_window_needs_minimum_traffic():
 
 
 # ------------------------------------------------------------- canary gate --
-def test_wilson_bound_is_conservative_for_small_samples():
-    assert wilson_lower_bound(1, 20) < 0.0144 < 1 / 20  # one bad of 20 proves nothing
-    assert wilson_lower_bound(6, 20) > 0.0144
+def test_sprt_needs_more_than_one_bad_request():
+    p0, p1 = 0.001, 0.0144  # 99.9% SLO: at budget vs at the page rate
+    boundary = sprt_fail_boundary(0.05, 0.05)
+    assert boundary == pytest.approx(math.log(19))
+    assert sprt_llr(1, 1, p0, p1) < boundary  # one slow response convicts nothing
+    assert sprt_llr(2, 2, p0, p1) > boundary
+    assert sprt_llr(2, 150, p0, p1) > boundary  # 1.3% bad sits at the page rate: fails
+    assert sprt_llr(2, 250, p0, p1) < boundary  # 0.8%: between budget and page rate, not proven
+
+
+def test_sprt_false_fail_rate_is_bounded_under_continuous_monitoring():
+    """Look after every single request, as the control loop effectively does:
+    a canary that only burns at budget must fail at most ~alpha of the time."""
+    import random
+
+    rng = random.Random(0)
+    p0, p1, boundary = 0.001, 0.0144, sprt_fail_boundary(0.05, 0.05)
+    failures, trials = 0, 2000
+    for _ in range(trials):
+        bad = 0
+        for n in range(1, 301):
+            bad += rng.random() < p0
+            if sprt_llr(bad, n, p0, p1) >= boundary:
+                failures += 1
+                break
+    assert failures / trials < 0.05
 
 
 def _gate(canary, stable=None, elapsed=60.0, **kw):
@@ -107,13 +132,14 @@ def test_gate_passes_healthy_canary_after_window():
 
 
 def test_gate_does_not_convict_on_one_slow_request():
+    assert _gate(WindowCounts(1, 1), elapsed=2.0).verdict == "WAIT"
     v = _gate(WindowCounts(22, 1))
     assert v.verdict == "PASS" and v.canary_burn > 14.4  # point estimate is high, evidence is thin
 
 
 def test_gate_fails_fast_on_confident_regression():
     v = _gate(WindowCounts(20, 8), elapsed=10.0)  # before the window ends
-    assert v.verdict == "FAIL" and "95% confidence" in v.reason
+    assert v.verdict == "FAIL" and "SPRT" in v.reason and v.sprt_llr >= v.sprt_fail_at
 
 
 def test_gate_waits_for_window_and_traffic():
@@ -181,3 +207,17 @@ def test_canary_gate_reads_colour_specific_samples(db):
     v = svc.gate(db, "ledger-svc", "green", "blue", T0, T0 + timedelta(seconds=60))
     assert v.verdict == "FAIL"
     assert v.canary_requests == 48 and v.stable_requests == 480
+
+
+def test_history_matches_point_evaluation(db):
+    svc = BurnRateService()
+    _add_samples(db, "ledger-svc", "blue", T0, 120, 50, 0)  # 10 clean minutes
+    _add_samples(db, "ledger-svc", "blue", T0 + timedelta(minutes=10), 12, 50, 25)  # 1 minute at 50% bad
+    now = T0 + timedelta(minutes=11)
+    hist = svc.history(db, "ledger-svc", now, minutes=10, step_s=30)
+    last = hist["points"][-1]
+    point = {e.severity: e for e in svc.evaluate(db, "ledger-svc", now).evaluations}["FAST_BURN"]
+    assert last["burn_1h"] == pytest.approx(point.long_burn)
+    assert last["burn_5m"] == pytest.approx(point.short_burn)
+    assert len(hist["points"]) == 21 and hist["thresholds"][0]["value"] == 14.4
+    assert hist["points"][0]["burn_5m"] == 0.0  # before the failure

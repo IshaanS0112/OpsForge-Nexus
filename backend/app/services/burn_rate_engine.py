@@ -147,17 +147,19 @@ def worst_firing(evals: list[AlertEvaluation]) -> Optional[AlertEvaluation]:
 
 
 # ------------------------------------------------------------- canary gate --
-def wilson_lower_bound(bad: int, total: int, z: float = 1.96) -> float:
-    """Lower end of the Wilson score interval for the bad ratio (95% by
-    default). Small samples get wide intervals, so a single slow request in
-    twenty cannot by itself prove a canary is burning budget."""
-    if total <= 0:
-        return 0.0
-    p = bad / total
-    denom = 1 + z * z / total
-    centre = p + z * z / (2 * total)
-    margin = z * math.sqrt(p * (1 - p) / total + z * z / (4 * total * total))
-    return max(0.0, (centre - margin) / denom)
+def sprt_llr(bad: int, total: int, p0: float, p1: float) -> float:
+    """Log-likelihood ratio of Wald's sequential probability ratio test for a
+    bad-request ratio: evidence for H1 (bad ratio p1) over H0 (p0). Each bad
+    request adds log(p1/p0); each good one adds log((1-p1)/(1-p0)), a small
+    negative step."""
+    good = total - bad
+    return bad * math.log(p1 / p0) + good * math.log((1 - p1) / (1 - p0))
+
+
+def sprt_fail_boundary(alpha: float, beta: float) -> float:
+    """Upper SPRT boundary log((1-beta)/alpha): crossing it accepts H1 with at
+    most ``alpha`` probability of doing so when H0 is true."""
+    return math.log((1 - beta) / alpha)
 
 
 @dataclass
@@ -167,7 +169,8 @@ class GateVerdict:
     canary_requests: int
     canary_bad: int
     canary_burn: Optional[float]
-    canary_burn_lower_bound: Optional[float]
+    sprt_llr: float  # evidence the canary burns at the page rate rather than at budget
+    sprt_fail_at: float  # boundary that fails the stage
     stable_requests: int
     stable_bad: int
     stable_burn: Optional[float]
@@ -190,15 +193,23 @@ def evaluate_canary_gate(
     threshold: float = settings.canary_max_burn_rate,
     min_requests: int = settings.canary_min_requests,
     max_wait_s: float = settings.canary_max_stage_wait_s,
+    alpha: float = settings.canary_sprt_alpha,
+    beta: float = settings.canary_sprt_beta,
 ) -> GateVerdict:
     """Gate one canary stage on the canary colour's own traffic.
 
-    - FAIL, at any point in the window, once we are 95% confident the canary
-      burns budget faster than the threshold: the Wilson lower bound of its
-      bad ratio, divided by the error budget, exceeds it. A handful of
-      requests at 5% exposure cannot convict a canary on one slow response;
-      each later stage sends it more traffic, so the test gains power as
-      exposure grows.
+    A canary is watched continuously, so the early-fail test must stay honest
+    under repeated looks: Wald's sequential probability ratio test (SPRT)
+    between two hypotheses about its bad-request ratio,
+
+        H0: burning at budget      p0 = 1 - SLO
+        H1: burning at page rate   p1 = threshold * (1 - SLO)   (14.4x)
+
+    - FAIL, at any point in the window, when the log-likelihood ratio crosses
+      log((1-beta)/alpha): at most ``alpha`` chance of failing a canary that
+      only burns at budget. For a 99.9% SLO one bad request adds 2.67 against
+      a 2.94 boundary, so a single slow response never convicts a release;
+      two bad requests close together do.
     - PASS once the confirmation window has elapsed with at least
       ``min_requests`` canary requests and no FAIL.
     - Too little canary traffic for ``max_wait_s`` fails the stage: an
@@ -209,8 +220,10 @@ def evaluate_canary_gate(
     rollout whatever its cause)."""
     cb = burn_rate(canary.bad, canary.total, slo_target)
     sb = burn_rate(stable.bad, stable.total, slo_target)
-    budget = 1.0 - slo_target
-    lower = wilson_lower_bound(canary.bad, canary.total) / budget if canary.total else None
+    p0 = 1.0 - slo_target
+    p1 = min(0.99, threshold * p0)
+    llr = sprt_llr(canary.bad, canary.total, p0, p1)
+    fail_at = sprt_fail_boundary(alpha, beta)
 
     def verdict(v: str, reason: str) -> GateVerdict:
         return GateVerdict(
@@ -219,7 +232,8 @@ def evaluate_canary_gate(
             canary_requests=canary.total,
             canary_bad=canary.bad,
             canary_burn=cb,
-            canary_burn_lower_bound=lower,
+            sprt_llr=round(llr, 3),
+            sprt_fail_at=round(fail_at, 3),
             stable_requests=stable.total,
             stable_bad=stable.bad,
             stable_burn=sb,
@@ -233,11 +247,11 @@ def evaluate_canary_gate(
     if sb is not None and sb > threshold:
         stable_note = f"; stable colour also burning {sb:.1f}x, so the degradation is not specific to the canary"
 
-    if lower is not None and lower > threshold:
+    if llr >= fail_at:
         return verdict(
             "FAIL",
-            f"canary burn rate {cb:.1f}x exceeds {threshold}x with 95% confidence "
-            f"({canary.bad}/{canary.total} bad){stable_note}",
+            f"canary burning at {cb:.1f}x: SPRT evidence {llr:.2f} crossed {fail_at:.2f} for "
+            f"'burning at {threshold}x' over 'at budget' ({canary.bad}/{canary.total} bad){stable_note}",
         )
     if elapsed_s < window_s:
         return verdict("WAIT", f"confirmation window {elapsed_s:.0f}/{window_s:.0f}s")
@@ -249,7 +263,7 @@ def evaluate_canary_gate(
         return verdict("WAIT", f"waiting for canary traffic: {canary.total}/{min_requests} requests")
     return verdict(
         "PASS",
-        f"canary burn rate {cb:.2f}x (95% lower bound {lower:.2f}x) within {threshold}x over {canary.total} requests",
+        f"canary burn rate {cb:.2f}x over {canary.total} requests; SPRT evidence {llr:.2f} below {fail_at:.2f}",
     )
 
 
@@ -375,3 +389,55 @@ class BurnRateService:
             elapsed_s=(now - since).total_seconds(),
             window_s=window_s,
         )
+
+    def history(self, db: Session, service: str, now: datetime, minutes: int = 60, step_s: int = 30) -> dict:
+        """FAST_BURN's two windows (1h and 5m) evaluated every ``step_s`` over
+        the last ``minutes``: one query, then prefix sums over time buckets,
+        rather than two SUM queries per plotted point."""
+        cfg = self.slo(db, service)
+        fast = POLICY[0]
+        long_steps = int(fast.long_window.total_seconds() // step_s)
+        short_steps = max(1, int(fast.short_window.total_seconds() // step_s))
+        start = now - timedelta(minutes=minutes) - fast.long_window
+        n_buckets = math.ceil((now - start).total_seconds() / step_s)  # the last bucket ends at now
+        totals, bads = [0] * n_buckets, [0] * n_buckets
+        rows = db.execute(
+            select(SLISample.window_end, SLISample.total_requests, SLISample.bad_requests).where(
+                SLISample.service_name == service, SLISample.window_end > start, SLISample.window_end <= now
+            )
+        ).all()
+        for end, total, bad in rows:
+            # Buckets are right-closed, (start + i*step, start + (i+1)*step],
+            # matching the (now - window, now] sums used for alerting.
+            i = min(n_buckets - 1, max(0, math.ceil((end - start).total_seconds() / step_s) - 1))
+            totals[i] += total
+            bads[i] += bad
+        cum_t, cum_b = [0], [0]
+        for t, b in zip(totals, bads, strict=True):
+            cum_t.append(cum_t[-1] + t)
+            cum_b.append(cum_b[-1] + b)
+
+        def window(end_i: int, steps: int) -> tuple[int, int]:
+            lo = max(0, end_i + 1 - steps)
+            return cum_t[end_i + 1] - cum_t[lo], cum_b[end_i + 1] - cum_b[lo]
+
+        points = []
+        first = n_buckets - 1 - int(minutes * 60 // step_s)
+        for i in range(max(0, first), n_buckets):
+            lt, lb = window(i, long_steps)
+            st, sb = window(i, short_steps)
+            points.append(
+                {
+                    "t": (start + timedelta(seconds=(i + 1) * step_s)).isoformat(),
+                    "burn_1h": burn_rate(lb, lt, cfg.slo_target),
+                    "burn_5m": burn_rate(sb, st, cfg.slo_target),
+                    "requests_5m": st,
+                }
+            )
+        return {
+            "service": service,
+            "slo_target": cfg.slo_target,
+            "step_s": step_s,
+            "thresholds": [{"severity": p.severity, "value": p.threshold, "action": p.action} for p in POLICY],
+            "points": points,
+        }

@@ -92,7 +92,8 @@ class Runtime:
         self.recorder = TrafficRecorder()
         self.transport = SimTransport(self.cluster) if self.cluster.mode == "simulated" else HttpTransport(self.cluster)
         self.gateway = Gateway(self.transport, self.routing, self.recorder)
-        self.loadgen = LoadGenerator(self.gateway, catalog.names()) if loadgen else None
+        self.loadgen = LoadGenerator(self.gateway, catalog.names(), ready=lambda: self.serving) if loadgen else None
+        self.serving = False  # every live colour Ready: synthetic traffic may flow
         self.burn = BurnRateService()
         self.canary = CanaryEngine(self.burn)
         self.rollback = rollback or RollbackEngine()
@@ -183,7 +184,25 @@ class Runtime:
             out[s] = [r.live_color] + ([r.canary_color] if r.canary_color else [])
         return out
 
+    def _check_serving(self) -> None:
+        """Hold synthetic traffic until every service's live colour has Ready
+        pods. Checked until true; afterwards pod failures are for the
+        detectors to find, not a reason to stop traffic."""
+        if self.serving:
+            return
+        try:
+            ready = all(
+                self.cluster.rollout_status(s, self.cluster.live_color(s) or "blue").complete for s in catalog.names()
+            )
+        except Exception as exc:  # noqa: BLE001 — keep waiting
+            logger.debug("readiness check failed: %s", exc)
+            return
+        if ready:
+            self.serving = True
+            logger.info("all live colours ready; synthetic traffic starting")
+
     def _tick(self, db: Session, now: datetime) -> None:
+        self._check_serving()
         graph = self.graph(db)
         order = self.service_order(db)
         windows = self.recorder.drain()

@@ -75,6 +75,8 @@ class Settings(BaseSettings):
     canary_min_requests: int = 20  # canary requests needed before a stage can pass
     canary_max_stage_wait_s: float = 300.0  # insufficient traffic for this long -> fail
     canary_max_burn_rate: float = 14.4  # a canary burning faster than a FAST_BURN page fails
+    canary_sprt_alpha: float = 0.05  # max chance of failing a canary that only burns at budget
+    canary_sprt_beta: float = 0.05
 
     # --- Rollback engine ---
     rollback_cooldown_s: int = 300  # 5 min anti-flapping

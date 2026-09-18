@@ -33,6 +33,7 @@ import random
 import threading
 import time
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -337,6 +338,7 @@ class LoadGenerator:
         burst_start: float = settings.loadgen_burst_start,
         burst_share: float = settings.loadgen_burst_share,
         burst_multiplier: float = settings.loadgen_burst_multiplier,
+        ready: Optional[Callable[[], bool]] = None,
     ) -> None:
         self.gateway = gateway
         self.services = services
@@ -344,6 +346,9 @@ class LoadGenerator:
         self.period_s = period_s
         self.amplitude = amplitude
         self.burst = (burst_start, burst_start + burst_share, burst_multiplier)
+        # Traffic starts only once the fleet is serving: requests fired at
+        # pods still warming up would be refused and read as an outage.
+        self.ready = ready or (lambda: True)
         self.max_inflight = max_inflight
         self._rng = random.Random(seed)
         self._inflight = 0
@@ -376,6 +381,8 @@ class LoadGenerator:
         pending: set[asyncio.Task] = set()
         while self.running:
             await asyncio.sleep(self._rng.expovariate(self.rate(time.time())))
+            if not self.ready():
+                continue
             if self._inflight >= self.max_inflight:
                 continue  # shed load rather than queue without bound
             task = asyncio.create_task(self._fire(service))
