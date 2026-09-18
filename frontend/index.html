@@ -1,9 +1,19 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>OpsForge Nexus</title>
+    <meta name="color-scheme" content="dark light" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>OpsForge Nexus · Ops Console</title>
+    <script>
+      // Apply the saved theme before first paint (dark unless the viewer chose otherwise).
+      try {
+        var pref = localStorage.getItem("opsforge-theme") || "dark";
+        var dark = pref === "dark" || (pref === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

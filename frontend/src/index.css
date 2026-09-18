@@ -1,80 +1,226 @@
-:root {
-  --bg: #0d1117;
-  --panel: #161b22;
-  --border: #30363d;
-  --text: #e6edf3;
-  --muted: #8b949e;
-  --accent: #2f81f7;
-  --green: #3fb950;
-  --red: #f85149;
-  --amber: #d29922;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+@import "tailwindcss";
+
+/*
+ * Ops Console design tokens.
+ *
+ * Every status colour means one thing everywhere it appears:
+ *   ok        healthy / operational
+ *   warn      degraded, one detector layer, medium or slow burn
+ *   critical  incident, fast burn
+ *   rollback  the system actively correcting (the safety net working)
+ *   canary    a canary stage in progress
+ * Status never carries meaning alone: it ships with an icon and a label.
+ * Data series (latency, burn rate, metrics) wear neutral ink, so no line on a
+ * chart can be mistaken for a status.
+ *
+ * Dark is the default for this subject; light inverts panel/background and
+ * deepens the status steps until each clears 3:1 on its surfaces.
+ */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f1620;
+  --panel: #161f2c;
+  --panel-2: #1b2636;
+  --text: #e4e9f0;
+  --text-2: #a9b6c6;
+  --muted: #8394a8;
+  --grid: #2a3644;
+  --axis: #3a4859;
+  --data: #a9b6c6;
+  --data-2: #6b7a8c;
+  --ring: rgb(255 255 255 / 0.1);
+  --ok: #3fa796;
+  --warn: #e0a93e;
+  --critical: #d65c5c;
+  --rollback: #7c8ce0;
+  --canary: #4fb0d9;
+  --shadow: 0 1px 0 rgb(255 255 255 / 0.03), 0 8px 24px rgb(0 0 0 / 0.25);
 }
 
-* { box-sizing: border-box; }
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #edf1f5;
+  --panel: #ffffff;
+  --panel-2: #f5f7fa;
+  --text: #0f1620;
+  --text-2: #3d4b5c;
+  --muted: #5a6878;
+  --grid: #dde3ea;
+  --axis: #c3ccd6;
+  --data: #3d4b5c;
+  --data-2: #94a3b8;
+  --ring: rgb(15 22 32 / 0.1);
+  --ok: #399889;
+  --warn: #b5811d;
+  --critical: #c64f4f;
+  --rollback: #7485de;
+  --canary: #2a94c1;
+  --shadow: 0 1px 2px rgb(15 22 32 / 0.06), 0 6px 18px rgb(15 22 32 / 0.06);
+}
 
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-text: var(--text);
+  --color-text-2: var(--text-2);
+  --color-muted: var(--muted);
+  --color-grid: var(--grid);
+  --color-axis: var(--axis);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-critical: var(--critical);
+  --color-rollback: var(--rollback);
+  --color-canary: var(--canary);
+  --font-sans: "Manrope Variable", "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+html,
 body {
-  margin: 0;
   background: var(--bg);
   color: var(--text);
 }
 
-a { color: var(--accent); text-decoration: none; }
-a:hover { text-decoration: underline; }
-
-.container { max-width: 1080px; margin: 0 auto; padding: 24px; }
-
-header.nav {
-  display: flex; align-items: center; gap: 24px;
-  padding: 16px 24px; border-bottom: 1px solid var(--border);
-  background: var(--panel);
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
 }
-header.nav .brand { font-weight: 700; font-size: 18px; }
-header.nav nav a { color: var(--muted); font-size: 14px; }
-header.nav nav a.active { color: var(--text); }
+
+/* Monospace only where alignment or literalness matters: service names,
+   versions, metric values, burn rates, logs. */
+.mono {
+  font-family: var(--font-mono);
+  font-feature-settings: "calt" 0;
+}
+.num {
+  font-variant-numeric: tabular-nums;
+}
 
 .panel {
-  background: var(--panel); border: 1px solid var(--border);
-  border-radius: 8px; padding: 16px; margin-bottom: 16px;
+  background: var(--panel);
+  border: 1px solid var(--ring);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
 }
-.panel h2 { margin: 0 0 12px; font-size: 15px; }
-.panel h3 { margin: 16px 0 8px; font-size: 14px; color: var(--muted); }
 
-.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
-.grow { flex: 1; }
-
-button {
-  background: var(--accent); color: #fff; border: none;
-  padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 14px;
+.eyebrow {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
-button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
-button.danger { background: var(--red); }
-button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-input, select {
-  background: var(--bg); color: var(--text); border: 1px solid var(--border);
-  padding: 8px 10px; border-radius: 6px; font-size: 14px;
+:focus-visible {
+  outline: 2px solid var(--canary);
+  outline-offset: 2px;
+  border-radius: 6px;
 }
-label.check { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); }
 
-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
-th { color: var(--muted); font-weight: 500; }
-
-.badge {
-  display: inline-block; padding: 2px 8px; border-radius: 999px;
-  font-size: 12px; font-weight: 600;
+/* ---- motion: the graph is the one place allowed to move ---- */
+@keyframes pulse-ring {
+  0% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  70% {
+    opacity: 0;
+    transform: scale(1.18);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.18);
+  }
 }
-.badge.LIVE, .badge.RESOLVED, .badge.high { background: rgba(63,185,80,0.15); color: var(--green); }
-.badge.ROLLED_BACK, .badge.OPEN, .badge.CRITICAL { background: rgba(248,81,73,0.15); color: var(--red); }
-.badge.HEALTH_CHECKING, .badge.INVESTIGATING, .badge.MEDIUM, .badge.medium { background: rgba(210,153,34,0.15); color: var(--amber); }
-.badge.low, .badge.LOW { background: rgba(139,148,158,0.15); color: var(--muted); }
-
-.muted { color: var(--muted); }
-.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
-pre {
-  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
-  padding: 12px; overflow-x: auto; font-size: 12px;
+.pulse-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pulse-ring 1.8s ease-out infinite;
 }
-.evidence { color: var(--muted); font-size: 13px; margin-top: 4px; }
-.impact-value { font-size: 28px; font-weight: 700; color: var(--amber); }
+
+@keyframes flow {
+  to {
+    stroke-dashoffset: 24;
+  }
+}
+.edge-flow {
+  stroke-dasharray: 6 6;
+  animation: flow 0.9s linear infinite;
+}
+
+@keyframes breathe {
+  50% {
+    opacity: 0.45;
+  }
+}
+.breathe {
+  animation: breathe 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse-ring,
+  .edge-flow,
+  .breathe {
+    animation: none;
+  }
+  .pulse-ring {
+    opacity: 0.35;
+  }
+}
+
+/* ---- form controls ---- */
+.field {
+  background: var(--panel-2);
+  border: 1px solid var(--grid);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 7px 10px;
+  font-size: 13px;
+  width: 100%;
+}
+.field:focus-visible {
+  outline-offset: 0;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--grid);
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms;
+}
+.btn:hover:not(:disabled) {
+  border-color: var(--axis);
+  background: color-mix(in oklab, var(--panel-2) 80%, var(--text) 6%);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--text-2);
+  border-color: var(--text-2);
+}
+.btn-danger {
+  border-color: color-mix(in oklab, var(--critical) 55%, transparent);
+}
+
+::selection {
+  background: color-mix(in oklab, var(--canary) 35%, transparent);
+}

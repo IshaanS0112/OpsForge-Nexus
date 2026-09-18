@@ -1,10 +1,12 @@
-import { defineConfig } from "vite";
+/// <reference types="vitest/config" />
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
 
-// The dashboard talks to the FastAPI backend. In dev we proxy /api to it so
-// there are no CORS surprises; in Docker, VITE_API_BASE points at the backend.
+// The console talks to the FastAPI backend under /api. In dev, Vite proxies
+// /api to it; in Docker, nginx does (see nginx.conf).
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
     proxy: {
@@ -14,5 +16,8 @@ export default defineConfig({
         rewrite: (p) => p.replace(/^\/api/, ""),
       },
     },
+  },
+  test: {
+    include: ["src/**/*.test.ts"],
   },
 });
