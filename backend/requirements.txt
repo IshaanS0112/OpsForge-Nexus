@@ -1,10 +1,16 @@
-fastapi==0.111.0
-uvicorn[standard]==0.30.1
-sqlalchemy==2.0.31
-psycopg2-binary==2.9.9
-pydantic==2.8.2
-pydantic-settings==2.3.4
-python-dotenv==1.0.1
-httpx==0.27.0
-anthropic==0.31.2
-numpy==1.26.4
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+sqlalchemy==2.0.54
+alembic==1.20.0
+psycopg2-binary==2.9.13
+pydantic==2.13.5
+pydantic-settings==2.15.0
+python-dotenv==1.2.1
+httpx==0.28.1
+anthropic==1.6.0
+# Cluster access
+kubernetes==36.0.3
+# Anomaly-detection suite: STL decomposition and Isolation Forest
+numpy==2.5.3
+statsmodels==0.15.0
+scikit-learn==1.9.1

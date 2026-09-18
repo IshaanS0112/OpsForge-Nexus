@@ -19,3 +19,6 @@ vite.config.ts.timestamp-*
 .DS_Store
 .idea/
 .vscode/
+
+# Local cluster credentials written by cluster-up.sh
+.kube/

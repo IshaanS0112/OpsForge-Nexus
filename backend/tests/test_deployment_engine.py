@@ -1,4 +1,5 @@
 """Blue-green state machine + health gate."""
+
 import pytest
 
 from app.services.deployment_engine import (
@@ -73,6 +74,6 @@ def test_health_gate_sleeps_between_polls(monkeypatch):
 def test_poll_pass_criteria():
     hc = HealthChecker()
     assert hc.poll_passes(HealthSample(0.999, 180.0)) is True
-    assert hc.poll_passes(HealthSample(0.95, 180.0)) is False   # success rate too low
+    assert hc.poll_passes(HealthSample(0.95, 180.0)) is False  # success rate too low
     assert hc.poll_passes(HealthSample(0.999, 600.0)) is False  # latency too high
     assert hc.poll_passes(HealthSample(0.999, 180.0, has_5xx_spike=True)) is False

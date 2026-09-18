@@ -1,3 +1,10 @@
+name: opsforge
+
+# A fixed network name, so cluster-up.sh can attach the kind node to it.
+networks:
+  default:
+    name: opsforge-net
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -15,17 +22,45 @@ services:
       timeout: 3s
       retries: 10
 
+  # Creates (or reuses) the local kind cluster, joins its node to this network
+  # and writes kubeconfigs, then exits. Needs the host Docker socket because
+  # kind runs the Kubernetes node as a sibling container.
+  cluster-bootstrap:
+    build: ./cluster
+    environment:
+      COMPOSE_NETWORK: opsforge-net
+      INTERNAL_KUBECONFIG: /kube/config
+      HOST_KUBECONFIG: /host-kube/config
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - kubeconfig:/kube
+      - ./.kube:/host-kube
+    restart: "no"
+
   backend:
     build: ./backend
     environment:
       DATABASE_URL: postgresql://opsforge:opsforge@postgres:5432/opsforge
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      LLM_MODEL: ${LLM_MODEL:-claude-sonnet-4-5}
+      LLM_MODEL: ${LLM_MODEL:-claude-opus-5}
+      CLUSTER_MODE: ${CLUSTER_MODE:-kind}
+      KUBECONFIG: /kube/config
+      CLUSTER_NODE_HOST: opsforge-control-plane
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-}
+      # Demo timings: one compressed "day" of traffic every 5 minutes, so the
+      # seasonal layer has its two days of history after 10. config.py holds
+      # the defaults; production would run a 24h period.
+      SEASONAL_PERIOD_S: ${SEASONAL_PERIOD_S:-300}
+      LOADGEN_CYCLE_PERIOD_S: ${SEASONAL_PERIOD_S:-300}
+    volumes:
+      - kubeconfig:/kube:ro
     ports:
       - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
+      cluster-bootstrap:
+        condition: service_completed_successfully
 
   frontend:
     build: ./frontend
@@ -50,3 +85,4 @@ services:
 volumes:
   pgdata:
   n8ndata:
+  kubeconfig:

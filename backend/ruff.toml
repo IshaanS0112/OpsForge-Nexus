@@ -1,0 +1,12 @@
+line-length = 120
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+# B008: FastAPI's Depends() in defaults is the framework's idiom.
+# UP007/UP045: Optional[...] is kept where it reads clearer in signatures.
+# UP042: (str, Enum) keeps V1's enum semantics; StrEnum changes str().
+ignore = ["B008", "UP007", "UP042", "UP045"]
+
+[lint.isort]
+known-first-party = ["app"]

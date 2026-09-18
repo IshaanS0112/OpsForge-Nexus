@@ -1,4 +1,5 @@
 """Rollback triggers + anti-flapping cooldown."""
+
 from app.config import settings
 from app.services.rollback_engine import RollbackEngine, RollbackTrigger
 
@@ -21,37 +22,60 @@ def test_consecutive_health_failures_trigger():
     assert d.trigger == RollbackTrigger.CONSECUTIVE_HEALTH_FAILURES
 
 
-def test_error_rate_needs_sustain_window():
+def test_rollout_and_canary_gate_failures_trigger():
     eng = RollbackEngine()
-    # above threshold but not sustained long enough -> no rollback
-    d = eng.evaluate("svc", error_rate=0.09, error_rate_sustained_s=5)
-    assert not d.should_rollback
-    # sustained -> rollback
-    d2 = eng.evaluate("svc", error_rate=0.09, error_rate_sustained_s=40)
-    assert d2.should_rollback
-    assert d2.trigger == RollbackTrigger.ERROR_RATE
+    assert eng.evaluate("svc", rollout_failure="ImagePullBackOff").trigger == RollbackTrigger.ROLLOUT_FAILED
+    d = eng.evaluate("svc", canary_gate_failure="burn 40x > 14.4x")
+    assert d.should_rollback and d.trigger == RollbackTrigger.CANARY_GATE_FAILED
 
 
-def test_latency_trigger_relative_to_baseline():
+def test_fast_burn_with_consensus_triggers():
     eng = RollbackEngine()
-    d = eng.evaluate(
-        "svc", latency_p95=1200, latency_baseline=250, latency_sustained_s=90
-    )
+    d = eng.evaluate("svc", burn_severity="FAST_BURN", burn_rate=31.0, consensus_layers=2)
     assert d.should_rollback
-    assert d.trigger == RollbackTrigger.LATENCY_P95
+    assert d.trigger == RollbackTrigger.SLO_FAST_BURN
+    assert "31.0x" in d.reason
+
+
+def test_fast_burn_alone_only_pages():
+    eng = RollbackEngine()
+    d = eng.evaluate("svc", burn_severity="FAST_BURN", consensus_layers=1)
+    assert not d.should_rollback and "consensus" in d.reason
+
+
+def test_slower_burns_never_roll_back():
+    eng = RollbackEngine()
+    for sev in ("MEDIUM_BURN", "SLOW_BURN", None):
+        assert not eng.evaluate("svc", burn_severity=sev, consensus_layers=3).should_rollback
+
+
+def test_cascade_victim_is_not_rolled_back():
+    eng = RollbackEngine()
+    d = eng.evaluate("checkout-api", burn_severity="FAST_BURN", consensus_layers=3, cascade_root="payments-svc")
+    assert not d.should_rollback and "payments-svc" in d.reason
 
 
 def test_manual_bypasses_cooldown():
     clock = FakeClock()
     eng = RollbackEngine(clock=clock)
     eng.start_cooldown("svc")
-    # auto is suppressed during cooldown
-    auto = eng.evaluate("svc", consecutive_health_failures=3)
+    # metric-triggered rollback is suppressed during cooldown
+    auto = eng.evaluate("svc", burn_severity="FAST_BURN", consensus_layers=3)
     assert not auto.should_rollback
     # manual still fires
     manual = eng.evaluate("svc", manual=True)
     assert manual.should_rollback
     assert manual.trigger == RollbackTrigger.MANUAL
+
+
+def test_rollout_gates_are_not_suppressed_by_cooldown():
+    """A candidate failing its own gate must be aborted even during cooldown,
+    or it would be left half-rolled-out."""
+    clock = FakeClock()
+    eng = RollbackEngine(clock=clock)
+    eng.start_cooldown("svc")
+    assert eng.evaluate("svc", consecutive_health_failures=3).should_rollback
+    assert eng.evaluate("svc", canary_gate_failure="x").should_rollback
 
 
 def test_cooldown_expires():
@@ -61,17 +85,17 @@ def test_cooldown_expires():
     assert eng.in_cooldown("svc")
     clock.advance(settings.rollback_cooldown_s + 1)
     assert not eng.in_cooldown("svc")
-    # after cooldown, auto-rollback fires again
-    d = eng.evaluate("svc", consecutive_health_failures=3)
+    # after cooldown, metric-triggered rollback fires again
+    d = eng.evaluate("svc", burn_severity="FAST_BURN", consensus_layers=2)
     assert d.should_rollback
 
 
 def test_anti_flapping_prevents_loop():
-    """Rollback -> cooldown -> a fresh anomaly must NOT auto-rollback again."""
+    """Rollback -> cooldown -> a fresh FAST_BURN must NOT auto-rollback again."""
     clock = FakeClock()
     eng = RollbackEngine(clock=clock)
-    first = eng.evaluate("svc", consecutive_health_failures=3)
+    first = eng.evaluate("svc", burn_severity="FAST_BURN", consensus_layers=2)
     assert first.should_rollback
     eng.start_cooldown("svc")
-    second = eng.evaluate("svc", consecutive_health_failures=3)
+    second = eng.evaluate("svc", burn_severity="FAST_BURN", consensus_layers=2)
     assert not second.should_rollback  # suppressed -> loop broken

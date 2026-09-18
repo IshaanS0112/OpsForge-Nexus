@@ -1,0 +1,35 @@
+# Local single-node Kubernetes cluster for OpsForge (kind = Kubernetes in Docker).
+# Created by cluster-up.sh, which docker compose runs as the cluster-bootstrap
+# service. This is a real API server, scheduler and kubelet, running on one
+# node on this machine — not a production or cloud cluster.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: opsforge
+networking:
+  # Fixed host port so the host kubeconfig is stable across re-creates.
+  apiServerAddress: "127.0.0.1"
+  apiServerPort: 16443
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+    # NodePorts 30100-30117 (6 services x live/blue/green) mapped to the host,
+    # so a backend running outside compose can reach them on localhost.
+    extraPortMappings:
+      - {containerPort: 30100, hostPort: 30100, listenAddress: "127.0.0.1"}
+      - {containerPort: 30101, hostPort: 30101, listenAddress: "127.0.0.1"}
+      - {containerPort: 30102, hostPort: 30102, listenAddress: "127.0.0.1"}
+      - {containerPort: 30103, hostPort: 30103, listenAddress: "127.0.0.1"}
+      - {containerPort: 30104, hostPort: 30104, listenAddress: "127.0.0.1"}
+      - {containerPort: 30105, hostPort: 30105, listenAddress: "127.0.0.1"}
+      - {containerPort: 30106, hostPort: 30106, listenAddress: "127.0.0.1"}
+      - {containerPort: 30107, hostPort: 30107, listenAddress: "127.0.0.1"}
+      - {containerPort: 30108, hostPort: 30108, listenAddress: "127.0.0.1"}
+      - {containerPort: 30109, hostPort: 30109, listenAddress: "127.0.0.1"}
+      - {containerPort: 30110, hostPort: 30110, listenAddress: "127.0.0.1"}
+      - {containerPort: 30111, hostPort: 30111, listenAddress: "127.0.0.1"}
+      - {containerPort: 30112, hostPort: 30112, listenAddress: "127.0.0.1"}
+      - {containerPort: 30113, hostPort: 30113, listenAddress: "127.0.0.1"}
+      - {containerPort: 30114, hostPort: 30114, listenAddress: "127.0.0.1"}
+      - {containerPort: 30115, hostPort: 30115, listenAddress: "127.0.0.1"}
+      - {containerPort: 30116, hostPort: 30116, listenAddress: "127.0.0.1"}
+      - {containerPort: 30117, hostPort: 30117, listenAddress: "127.0.0.1"}

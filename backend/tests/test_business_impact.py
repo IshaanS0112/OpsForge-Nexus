@@ -1,4 +1,5 @@
 """Business impact formula."""
+
 import pytest
 
 from app.services.business_impact import compute_impact

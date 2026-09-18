@@ -3,6 +3,7 @@
 n8n posts the combined RCA + business-impact report back here for storage after
 running the pipeline, closing the loop described in the architecture doc.
 """
+
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException

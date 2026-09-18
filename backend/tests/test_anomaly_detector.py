@@ -1,4 +1,5 @@
 """Z-score anomaly detection: pure function + streak logic."""
+
 from app.services.anomaly_detector import AnomalyStreak, zscore
 
 
@@ -22,7 +23,7 @@ def test_streak_requires_k_consecutive():
     streak = AnomalyStreak(z_threshold=3.0, consecutive_needed=3)
     assert streak.observe("s", "error_rate", 4.0) is False  # 1
     assert streak.observe("s", "error_rate", 4.0) is False  # 2
-    assert streak.observe("s", "error_rate", 4.0) is True   # 3 -> incident
+    assert streak.observe("s", "error_rate", 4.0) is True  # 3 -> incident
 
 
 def test_streak_resets_on_normal_reading():

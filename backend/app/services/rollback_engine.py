@@ -3,12 +3,30 @@
 Every trigger records the *exact* condition and value that fired, so an
 incident's ``trigger_reason`` is auditable rather than "something looked bad".
 
-Anti-flapping: after a rollback we suppress further
-auto-rollback triggers for a cooldown window, otherwise a rollback can induce a
-transient anomaly that triggers another rollback — a loop. The cooldown is kept
-here in-memory for the MVP; a note in the docs explains prod would persist it
-(e.g. Redis) so it survives restarts and is shared across workers.
+Triggers:
+
+* Rollout-safety gates — the candidate never became Ready, failed its health
+  gate, or failed a canary stage's burn-rate gate. These abort a rollout that
+  is still in flight.
+* ``SLO_FAST_BURN`` — the primary trigger for a release that is already LIVE
+  (within the post-deploy watch window). It replaces V1's flat "error rate
+  > 5% sustained 30s" threshold and fires only when all of these hold:
+    - the FAST_BURN multiwindow alert is firing (1h and 5m both > 14.4x),
+    - at least two anomaly-detector layers agree (consensus),
+    - the service is not a cascade victim: rolling back a healthy release
+      cannot fix an upstream failure.
+* Manual — operator override.
+
+Anti-flapping: after a rollback, metric-triggered rollbacks for that service
+are suppressed for a cooldown window — a rollback can itself cause a
+transient anomaly, and acting on it would loop. Rollout-safety gates are not
+suppressed: a candidate that fails its own gate must be aborted, not left
+half-rolled-out. (V1 applied the cooldown to its health gate too, which left
+a failing deployment stuck in HEALTH_CHECKING.) The cooldown is in-memory;
+production would keep it in shared storage so it survives restarts and is
+shared across workers.
 """
+
 from __future__ import annotations
 
 import logging
@@ -24,8 +42,9 @@ logger = logging.getLogger(__name__)
 
 class RollbackTrigger(str, Enum):
     CONSECUTIVE_HEALTH_FAILURES = "consecutive_health_failures"
-    ERROR_RATE = "error_rate"
-    LATENCY_P95 = "latency_p95"
+    ROLLOUT_FAILED = "rollout_failed"
+    CANARY_GATE_FAILED = "canary_gate_failed"
+    SLO_FAST_BURN = "slo_fast_burn"
     MANUAL = "manual"
 
 
@@ -52,6 +71,9 @@ class RollbackEngine:
         until = self._cooldown_until.get(service, 0.0)
         return self._clock() < until
 
+    def cooldown_remaining(self, service: str) -> float:
+        return max(0.0, self._cooldown_until.get(service, 0.0) - self._clock())
+
     def start_cooldown(self, service: str) -> None:
         self._cooldown_until[service] = self._clock() + settings.rollback_cooldown_s
         logger.info("Cooldown started for %s (%ss)", service, settings.rollback_cooldown_s)
@@ -62,21 +84,21 @@ class RollbackEngine:
         service: str,
         *,
         consecutive_health_failures: int = 0,
-        error_rate: Optional[float] = None,
-        error_rate_sustained_s: float = 0.0,
-        latency_p95: Optional[float] = None,
-        latency_baseline: Optional[float] = None,
-        latency_sustained_s: float = 0.0,
+        rollout_failure: Optional[str] = None,
+        canary_gate_failure: Optional[str] = None,
+        burn_severity: Optional[str] = None,
+        burn_rate: Optional[float] = None,
+        consensus_layers: int = 0,
+        cascade_root: Optional[str] = None,
         manual: bool = False,
     ) -> RollbackDecision:
-        """Return a decision. Manual triggers bypass cooldown; automatic
-        triggers are suppressed while the service is cooling down."""
+        """Return a decision. Manual and rollout-safety triggers always act;
+        the metric trigger is suppressed while the service cools down."""
         if manual:
             return RollbackDecision(True, RollbackTrigger.MANUAL, "Manual rollback initiated by user")
 
-        if self.in_cooldown(service):
-            logger.info("Auto-rollback suppressed for %s: in cooldown", service)
-            return RollbackDecision(False, None, "suppressed: cooldown active")
+        if rollout_failure:
+            return RollbackDecision(True, RollbackTrigger.ROLLOUT_FAILED, f"rollout failed: {rollout_failure}")
 
         if consecutive_health_failures >= settings.health_consecutive_failures_to_rollback:
             return RollbackDecision(
@@ -86,30 +108,30 @@ class RollbackEngine:
                 f"(>= {settings.health_consecutive_failures_to_rollback})",
             )
 
-        if (
-            error_rate is not None
-            and error_rate > settings.rollback_error_rate_threshold
-            and error_rate_sustained_s >= settings.rollback_error_rate_sustain_s
-        ):
+        if canary_gate_failure:
             return RollbackDecision(
-                True,
-                RollbackTrigger.ERROR_RATE,
-                f"error_rate {error_rate:.1%} > {settings.rollback_error_rate_threshold:.0%} "
-                f"sustained {error_rate_sustained_s:.0f}s",
+                True, RollbackTrigger.CANARY_GATE_FAILED, f"canary gate failed: {canary_gate_failure}"
             )
 
-        if (
-            latency_p95 is not None
-            and latency_baseline
-            and latency_p95 > settings.rollback_latency_multiplier * latency_baseline
-            and latency_sustained_s >= settings.rollback_latency_sustain_s
-        ):
+        if burn_severity != "FAST_BURN":
+            return RollbackDecision(False, None, "no rollback condition met")
+        if self.in_cooldown(service):
+            logger.info("Auto-rollback suppressed for %s: in cooldown", service)
+            return RollbackDecision(False, None, "suppressed: cooldown active")
+        if cascade_root and cascade_root != service:
             return RollbackDecision(
-                True,
-                RollbackTrigger.LATENCY_P95,
-                f"p95 latency {latency_p95:.0f}ms > "
-                f"{settings.rollback_latency_multiplier}x baseline "
-                f"({latency_baseline:.0f}ms) sustained {latency_sustained_s:.0f}s",
+                False, None, f"FAST_BURN is a cascade from {cascade_root}; rolling back {service} would not fix it"
             )
-
-        return RollbackDecision(False, None, "all conditions within thresholds")
+        if consensus_layers < settings.consensus_min_layers:
+            return RollbackDecision(
+                False,
+                None,
+                f"FAST_BURN without detector consensus "
+                f"({consensus_layers}/{settings.consensus_min_layers} layers): page only",
+            )
+        rate = f" at {burn_rate:.1f}x" if burn_rate is not None else ""
+        return RollbackDecision(
+            True,
+            RollbackTrigger.SLO_FAST_BURN,
+            f"FAST_BURN{rate} (1h and 5m windows > 14.4x) with {consensus_layers}/3 detector layers agreeing",
+        )
