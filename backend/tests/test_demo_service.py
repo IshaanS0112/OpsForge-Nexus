@@ -105,7 +105,7 @@ def test_error_fault_cascades_with_root_cause(pair):
     code, body = _get(f"{payments}/work")
     assert code == 502
     assert body["error_signature"] == "UpstreamError:payments-svc->127.0.0.1:500"
-    assert body["caused_by"] == "ChaosErrorBurst:ledger-svc"
+    assert body["caused_by"] == "InternalError:ledger-svc@v0.0.0"  # VERSION unset in this test
 
     _get(f"{ledger}/admin/fault", "DELETE")
     assert _get(f"{payments}/work")[0] == 200

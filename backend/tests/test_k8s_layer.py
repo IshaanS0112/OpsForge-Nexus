@@ -55,6 +55,22 @@ def test_only_allowlisted_config_keys_become_env():
     assert applied == {"FAULT_ERROR_RATE": "0.3", "WORKERS": "8"}
 
 
+def test_pod_template_carries_the_workload_code_hash():
+    spec = catalog.get("ledger-svc")
+    d = m.deployment_manifest("ns", spec, "blue", "v1", replicas=1, image="img")
+    stamped = d["spec"]["template"]["metadata"]["annotations"][m.CODE_HASH_ANNOTATION]
+    assert stamped == m.code_hash() == m.code_hash(m.demo_service_source())
+    assert m.code_hash("print('v2')") != stamped
+
+
+def test_stale_workload_code_rolls_the_deployment():
+    current = m.code_hash()
+    assert m.stale_code_patch({m.CODE_HASH_ANNOTATION: current, "x": "y"}, current) is None
+    for stale in (None, {}, {m.CODE_HASH_ANNOTATION: "0" * 16}):
+        patch = m.stale_code_patch(stale, current)
+        assert patch == {"spec": {"template": {"metadata": {"annotations": {m.CODE_HASH_ANNOTATION: current}}}}}
+
+
 def test_config_change_changes_pod_template_hash():
     spec = catalog.get("ledger-svc")
     a = m.deployment_manifest("ns", spec, "blue", "v1", replicas=1, image="img")
@@ -181,7 +197,7 @@ def test_sim_fault_cascades_to_dependents_with_root_signature(sim):
     checkout = sim.handle("checkout-api")
     inventory = sim.handle("inventory-svc")
     assert payments["status"] == 502 and payments["signature"] == "UpstreamError:payments-svc->ledger-svc:500"
-    assert checkout["status"] == 502 and checkout["caused_by"] == "ChaosErrorBurst:ledger-svc"
+    assert checkout["status"] == 502 and checkout["caused_by"] == "InternalError:ledger-svc@v1.0.0"
     assert inventory["status"] == 200  # not downstream of ledger
 
     sim.clock_ref.advance(31)  # fault TTL expires on its own

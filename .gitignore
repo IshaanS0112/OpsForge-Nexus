@@ -22,3 +22,6 @@ vite.config.ts.timestamp-*
 
 # Local cluster credentials written by cluster-up.sh
 .kube/
+
+# Model output captured by scripts/capture_rca_sample.py
+docs/rca_sample.json

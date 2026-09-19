@@ -128,9 +128,12 @@ def resolve_incident(incident_id: str, db: Session = Depends(get_db), rt: Runtim
 
 
 @router.post("/{incident_id}/trigger-rca", response_model=RCAReportOut)
-def trigger_rca(incident_id: str, db: Session = Depends(get_db)):
+def trigger_rca(incident_id: str, blind: bool = False, db: Session = Depends(get_db)):
+    """Collect structured signals, then rank causes (model, or the rule-based
+    fallback). ``blind=true`` withholds any chaos drill context, to test
+    whether RCA finds an injected fault from the evidence alone."""
     incident = _get(db, incident_id)
-    return rca_engine.run(db, incident)
+    return rca_engine.run(db, incident, blind=blind)
 
 
 @router.get("/{incident_id}/rca-report", response_model=RCAReportOut)

@@ -15,6 +15,9 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
 )
+# The gateway and the metrics scrape make dozens of requests a second; one log
+# line each would drown the control loop's own messages.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 @asynccontextmanager

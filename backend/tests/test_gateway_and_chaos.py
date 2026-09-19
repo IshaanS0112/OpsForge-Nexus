@@ -28,13 +28,13 @@ def test_recorder_counts_bad_requests_against_the_slo():
     rec.set_latency_bound("svc", 300)
     rec.record(Outcome("svc", "live", "blue", 200, 50))
     rec.record(Outcome("svc", "live", "blue", 200, 450))  # slow: bad, not an error
-    rec.record(Outcome("svc", "green", "green", 500, 20, "ReleaseError:svc@v2"))
-    rec.record(Outcome("svc", "live", "blue", 502, 30, "UpstreamError:svc->dep:500", "ChaosErrorBurst:dep"))
+    rec.record(Outcome("svc", "green", "green", 500, 20, "InternalError:svc@v2"))
+    rec.record(Outcome("svc", "live", "blue", 502, 30, "UpstreamError:svc->dep:500", "InternalError:dep@v1"))
     rec.record(Outcome("svc", "live", "blue", None, 3000, "GatewayTimeout:svc"))
     w = rec.drain()["svc"]
     assert (w.total, w.bad, w.errors) == (5, 4, 3)
     assert w.colors["green"].total == 1 and w.colors["blue"].bad == 3
-    assert w.signatures()[("UpstreamError:svc->dep:500", "ChaosErrorBurst:dep")] == 1
+    assert w.signatures()[("UpstreamError:svc->dep:500", "InternalError:dep@v1")] == 1
     assert rec.drain() == {}  # drained
 
 

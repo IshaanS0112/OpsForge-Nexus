@@ -35,6 +35,7 @@ def cluster_info(rt: Runtime = Depends(get_runtime)):
         },
         "load_generator": {
             "running": bool(rt.loadgen and rt.loadgen.running),
+            "serving": rt.serving,  # every live colour Ready, so traffic is flowing
             "rps_per_service": settings.loadgen_rps_per_service,
             "cycle_period_s": settings.loadgen_cycle_period_s,
         },

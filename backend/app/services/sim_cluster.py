@@ -334,10 +334,8 @@ class SimulatedCluster:
             error_rate = float(env.get("FAULT_ERROR_RATE", 0.0))
 
         out = {"status": 200, "latency_ms": latency, "color": color, "pod": pod.name, "signature": None}
-        if error_rate and self.rng.random() < error_rate:
-            return {**out, "status": 500, "signature": f"ReleaseError:{service}@{c.version}"}
-        if self.rng.random() < faults.get("error", 0.0):
-            return {**out, "status": 500, "signature": f"ChaosErrorBurst:{service}"}
+        if (error_rate and self.rng.random() < error_rate) or self.rng.random() < faults.get("error", 0.0):
+            return {**out, "status": 500, "signature": f"InternalError:{service}@{c.version}"}
         if _depth > 8:
             return out
         dep_timeout_ms = float(env.get("DEP_TIMEOUT_S", 2.0)) * 1000

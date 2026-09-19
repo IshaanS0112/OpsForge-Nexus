@@ -57,6 +57,7 @@ def test_failing_canary_is_rolled_back_by_its_burn_rate_gate(client, rt, clock, 
     assert rt.cluster.color_version("payments-svc", "green")[1] == 0  # candidate scaled to zero
     inc = db.query(Incident).filter_by(related_deployment_id=dep_id).one()
     assert inc.severity == "HIGH" and "canary gate" in inc.trigger_reason
+    assert inc.detection_context["release_specific"] is True  # stable colour was healthy
     assert rt.rollback.in_cooldown("payments-svc")
 
 
@@ -78,6 +79,8 @@ def test_unpullable_image_fails_the_rollout(client, rt, clock, db):
     assert dep.status == "ROLLED_BACK"
     assert "ErrImagePull" in next(h for h in dep.stage_history if h["stage"] == "ROLLING_BACK")["reason"]
     assert rt.cluster.live_color("payments-svc") == "blue"
+    inc = db.query(Incident).filter_by(related_deployment_id=dep_id).one()
+    assert inc.detection_context["release_specific"] is True  # it never served a request
 
 
 def test_chaos_error_burst_cascades_and_drill_passes(client, rt, clock, db):
@@ -126,6 +129,9 @@ def test_canary_targeted_drill_measures_detection_and_rollback(client, rt, clock
     assert exp.rollback_latency_seconds is not None and exp.rollback_latency_seconds <= 90
     assert exp.detection_latency_seconds <= exp.rollback_latency_seconds
     assert any("detected by" in e["event"] for e in exp.timeline)
+    # the rollback's incident is linked to the drill that caused it
+    inc = db.query(Incident).filter_by(related_deployment_id=dep_id).one()
+    assert inc.chaos_experiment_id == exp_id
 
 
 def test_live_release_rolled_back_on_fast_burn_with_consensus(client, rt, clock, db):

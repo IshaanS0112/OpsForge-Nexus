@@ -51,7 +51,7 @@ from sqlalchemy.orm import Session
 
 from app import catalog
 from app.config import settings
-from app.models import ChaosExperiment, Deployment
+from app.models import ChaosExperiment, Deployment, Incident
 from app.services.deployment_engine import CANARY_STATES, DeployState
 
 logger = logging.getLogger(__name__)
@@ -287,6 +287,11 @@ class ChaosEngine:
                 finished = dep.finished_at or now
                 exp.rollback_latency_seconds = round((finished - exp.injected_at).total_seconds(), 2)
                 self._event(exp, now, f"rollback complete: {dep.status_reason or ''}".strip())
+                # The rollback opened its incident without knowing a drill
+                # caused it; link it so the drill report and RCA see the drill.
+                for inc in db.execute(select(Incident).where(Incident.related_deployment_id == dep.id)).scalars():
+                    if inc.chaos_experiment_id is None:
+                        inc.chaos_experiment_id = exp.id
 
             if elapsed >= (exp.duration_s or 0):
                 self._clear_fault(exp, now, "duration elapsed")

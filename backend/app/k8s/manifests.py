@@ -37,6 +37,7 @@ CODE_MOUNT = "/opt/opsforge"
 APP_LABEL = "app.kubernetes.io/name"
 COLOR_LABEL = "opsforge.io/color"
 VERSION_LABEL = "opsforge.io/version"
+CODE_HASH_ANNOTATION = "opsforge.io/code-hash"
 COMMON_LABELS = {
     "app.kubernetes.io/part-of": "opsforge-nexus",
     "app.kubernetes.io/managed-by": "opsforge-nexus",
@@ -75,6 +76,21 @@ def node_port(spec: ServiceSpec, variant: str) -> int:
 
 def demo_service_source() -> str:
     return (Path(__file__).parent / "demo_service.py").read_text()
+
+
+def code_hash(source: str | None = None) -> str:
+    """Fingerprint of the workload code the ConfigMap ships. It is stamped on
+    every pod template: a pod only picks up new code when it restarts, so a
+    changed hash is what rolls the pods (see KubernetesCluster.ensure_service)."""
+    return hashlib.sha256((source if source is not None else demo_service_source()).encode()).hexdigest()[:16]
+
+
+def stale_code_patch(template_annotations: dict | None, current: str) -> dict | None:
+    """The pod-template patch that rolls a Deployment still running older
+    workload code (what ``kubectl rollout restart`` does), or None."""
+    if (template_annotations or {}).get(CODE_HASH_ANNOTATION) == current:
+        return None
+    return {"spec": {"template": {"metadata": {"annotations": {CODE_HASH_ANNOTATION: current}}}}}
 
 
 def selector(service: str, color: str) -> dict[str, str]:
@@ -158,7 +174,7 @@ def deployment_manifest(
             "template": {
                 "metadata": {
                     "labels": labels,
-                    "annotations": {"opsforge.io/config-hash": config_hash},
+                    "annotations": {"opsforge.io/config-hash": config_hash, CODE_HASH_ANNOTATION: code_hash()},
                 },
                 "spec": {
                     "enableServiceLinks": False,

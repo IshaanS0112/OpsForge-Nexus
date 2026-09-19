@@ -82,6 +82,43 @@ def test_incidents_outside_the_window_are_independent(db):
     assert ledger.blast_radius_services == ["payments-svc", "checkout-api", "notification-svc"]
 
 
+def test_dependent_failing_well_before_the_upstream_stays_independent(db):
+    # checkout-api had its own bad rollout; a ledger fault four minutes later
+    # cannot have caused it, but it does explain payments-svc.
+    t0 = datetime(2026, 9, 18, 12, 0, 0)
+    checkout = _open(db, "checkout-api", t0)
+    ledger = _open(db, "ledger-svc", t0 + timedelta(minutes=4))
+    payments = _open(db, "payments-svc", t0 + timedelta(minutes=4, seconds=10))
+    db.refresh(checkout)
+    assert not checkout.is_cascading and checkout.root_incident_id is None
+    assert payments.is_cascading and payments.root_incident_id == ledger.id
+
+
+def test_release_specific_incident_is_never_a_cascade(db):
+    # checkout-api's canary failed its gate while its stable colour was fine;
+    # a ledger fault 15 s later (inside the skew allowance) must not claim it.
+    t0 = datetime(2026, 9, 18, 12, 0, 0)
+    service = IncidentService(N8nNotifier(url=""))
+    checkout, _ = service.open(
+        db, "checkout-api", "Rollback of v1.2", severity="HIGH", now=t0, graph=G, release_specific=True
+    )
+    ledger = _open(db, "ledger-svc", t0 + timedelta(seconds=15))
+    notification = _open(db, "notification-svc", t0 + timedelta(seconds=16))
+    db.refresh(checkout)
+    assert not checkout.is_cascading and checkout.detection_context["release_specific"] is True
+    assert notification.root_incident_id == ledger.id
+
+
+def test_cascade_spanning_more_than_the_window_keeps_one_root(db):
+    t0 = datetime(2026, 9, 18, 12, 0, 0)
+    ledger = _open(db, "ledger-svc", t0)
+    payments = _open(db, "payments-svc", t0 + timedelta(minutes=4, seconds=30))
+    checkout = _open(db, "checkout-api", t0 + timedelta(minutes=5, seconds=30))  # 5.5 min after ledger
+    db.refresh(payments)
+    assert payments.root_incident_id == ledger.id  # an old root still counts
+    assert checkout.is_cascading and checkout.root_incident_id == ledger.id  # via payments
+
+
 def test_one_active_incident_per_service(db):
     service = IncidentService(N8nNotifier(url=""))
     t0 = datetime(2026, 9, 18, 12, 0, 0)

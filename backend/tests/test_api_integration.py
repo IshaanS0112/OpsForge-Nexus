@@ -124,6 +124,35 @@ def test_batch_ingest_runs_the_suite(client):
     assert set(r.json()["layers"]) == {"zscore", "seasonal", "isolation_forest"}
 
 
+def test_external_service_incident_opens_on_consensus_and_resolves_when_quiet(client, runtime, clock):
+    rng = random.Random(7)
+
+    def reading(**anomaly):
+        clock.advance(5)
+        body = {
+            "service_name": "external-api",
+            "error_rate": max(0.0, rng.gauss(0.01, 0.002)),
+            "latency_p95": rng.gauss(200, 15),
+            "cpu_usage": rng.gauss(0.40, 0.03),
+            "memory_usage": rng.gauss(0.50, 0.03),
+            "requests": 500,
+            **anomaly,
+        }
+        return client.post("/metrics/ingest-batch", json=body).json()
+
+    for _ in range(40):
+        assert not reading()["auto_action"]
+    burst = [reading(error_rate=0.2, latency_p95=1400, cpu_usage=0.95, memory_usage=0.9) for _ in range(4)]
+    assert burst[-1]["auto_action"] and burst[-1]["agreeing_layers"] >= 2
+    opened = [i for i in client.get("/incidents").json() if i["service_name"] == "external-api"]
+    assert len(opened) == 1 and opened[0]["status"] == "OPEN"
+
+    for _ in range(14):  # 70 s of clean readings, past incident_resolve_after_s
+        reading()
+    runtime.tick(clock.now)
+    assert client.get(f"/incidents/{opened[0]['id']}").json()["status"] == "RESOLVED"
+
+
 def test_rollback_incident_gets_rca_and_impact(client, runtime, clock, db):
     runtime.routing._rng = random.Random(3)
     warm(runtime, clock, 12)

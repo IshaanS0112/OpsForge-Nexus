@@ -59,6 +59,7 @@ export default function IncidentPage() {
     return incident.error ? <ErrorNote>{errorMessage(incident.error)}</ErrorNote> : <div className="py-24 text-center text-muted">Loading incident…</div>;
   }
 
+  const drillLinked = Boolean(inc.chaos_experiment_id || tree.data?.root.chaos_experiment_id);
   const detected = parseUtc(inc.detected_at);
   const resolved = parseUtc(inc.resolved_at);
   const duration = detected ? ((resolved ?? now).getTime() - detected.getTime()) / 1000 : null;
@@ -85,6 +86,16 @@ export default function IncidentPage() {
           <button className="btn" disabled={busy != null} onClick={() => act("rca", async () => { await api.triggerRca(id); await rca.refresh(); await impact.refresh(); })}>
             {busy === "rca" ? "Analysing…" : rca.data ? "Re-run RCA" : "Run RCA"}
           </button>
+          {drillLinked && (
+            <button
+              className="btn"
+              disabled={busy != null}
+              title="Rank causes with the chaos drill withheld, to test whether RCA finds the fault from the evidence alone"
+              onClick={() => act("blind", async () => { await api.triggerRca(id, true); await rca.refresh(); })}
+            >
+              {busy === "blind" ? "Analysing…" : "Blind RCA"}
+            </button>
+          )}
           {inc.status !== "RESOLVED" && (
             <button className="btn" disabled={busy != null} onClick={() => act("resolve", async () => { await api.resolve(id); await incident.refresh(); })}>
               Resolve

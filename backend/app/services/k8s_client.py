@@ -216,7 +216,10 @@ class KubernetesCluster:
         cfg = client.Configuration()
         try:
             config.load_kube_config(config_file=kubeconfig or None, context=context or None, client_configuration=cfg)
-            self._context = context or "current-context"
+            if not context:
+                _, active = config.list_kube_config_contexts(config_file=kubeconfig or None)
+                context = active["name"]
+            self._context = context
         except config.ConfigException:
             config.load_incluster_config(client_configuration=cfg)
             self._context = "in-cluster"
@@ -231,16 +234,19 @@ class KubernetesCluster:
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------ helpers --
-    def _exists(self, reader, *args) -> bool:
+    def _read(self, reader, *args) -> Any:
+        """The object, or None when it does not exist."""
         from kubernetes.client.exceptions import ApiException
 
         try:
-            reader(*args)
-            return True
+            return reader(*args)
         except ApiException as exc:
             if exc.status == 404:
-                return False
+                return None
             raise
+
+    def _exists(self, reader, *args) -> bool:
+        return self._read(reader, *args) is not None
 
     def _apply(self, patcher, name: str, body: dict) -> Any:
         """Server-side apply (``kubectl apply --server-side``)."""
@@ -290,28 +296,37 @@ class KubernetesCluster:
         self._apply(self.core.patch_namespaced_config_map, m.CODE_CONFIGMAP, m.code_configmap(self.namespace))
 
     def ensure_service(self, spec: ServiceSpec) -> None:
-        """Create any missing objects for one service. Existing objects are
-        left alone: they carry the live colour and deployed versions."""
+        """Create any missing objects for one service. Existing objects keep
+        their live colour and deployed versions; the only change made to them
+        is a rolling restart when their pods run older workload code than the
+        ConfigMap now ships, so a colour never mixes two versions of it."""
         for variant in ("live", *m.COLORS):
             name = spec.name if variant == "live" else m.deployment_name(spec.name, variant)
             if not self._exists(self.core.read_namespaced_service, name, self.namespace):
                 self.core.create_namespaced_service(self.namespace, m.service_manifest(self.namespace, spec, variant))
                 logger.info("created service %s", name)
+        current = m.code_hash()
         for color in m.COLORS:
             name = m.deployment_name(spec.name, color)
-            if not self._exists(self.apps.read_namespaced_deployment, name, self.namespace):
-                body = m.deployment_manifest(
-                    self.namespace,
-                    spec,
-                    color,
-                    spec.initial_version,
-                    replicas=self.replicas if color == "blue" else 0,
-                    image=self.image,
-                    env_defaults=env_defaults(),
-                    progress_deadline_s=settings.rollout_timeout_s,
-                )
-                self.apps.create_namespaced_deployment(self.namespace, body)
-                logger.info("created deployment %s", name)
+            existing = self._read(self.apps.read_namespaced_deployment, name, self.namespace)
+            if existing is not None:
+                patch = m.stale_code_patch(existing.spec.template.metadata.annotations, current)
+                if patch is not None:
+                    self.apps.patch_namespaced_deployment(name, self.namespace, patch, field_manager=FIELD_MANAGER)
+                    logger.info("rolling %s onto workload code %s", name, current)
+                continue
+            body = m.deployment_manifest(
+                self.namespace,
+                spec,
+                color,
+                spec.initial_version,
+                replicas=self.replicas if color == "blue" else 0,
+                image=self.image,
+                env_defaults=env_defaults(),
+                progress_deadline_s=settings.rollout_timeout_s,
+            )
+            self.apps.create_namespaced_deployment(self.namespace, body)
+            logger.info("created deployment %s", name)
 
     # ------------------------------------------------------------- traffic --
     def live_color(self, service: str) -> Optional[str]:

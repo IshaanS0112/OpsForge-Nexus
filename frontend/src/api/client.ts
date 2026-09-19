@@ -153,7 +153,7 @@ export interface ClusterInfo {
   bootstrapped: boolean;
   bootstrap_error: string | null;
   control_loop: { running: boolean; tick_s: number; ticks: number; last_tick_at: string | null; last_tick_ms: number | null };
-  load_generator: { running: boolean; rps_per_service: number; cycle_period_s: number };
+  load_generator: { running: boolean; serving: boolean; rps_per_service: number; cycle_period_s: number };
 }
 
 export interface StageEntry {
@@ -422,7 +422,7 @@ export const api = {
   incidents: (status?: string) => get<Incident[]>(`/incidents${status ? `?status=${status}` : ""}`),
   incident: (id: string) => get<IncidentDetail>(`/incidents/${id}`),
   cascadeTree: (id: string) => get<CascadeTree>(`/incidents/${id}/cascade-tree`),
-  triggerRca: (id: string) => post<RCAReport>(`/incidents/${id}/trigger-rca`),
+  triggerRca: (id: string, blind = false) => post<RCAReport>(`/incidents/${id}/trigger-rca${blind ? "?blind=true" : ""}`),
   rcaReport: (id: string) => get<RCAReport>(`/incidents/${id}/rca-report`),
   impact: (id: string, refresh = false) =>
     get<BusinessImpact>(`/incidents/${id}/business-impact${refresh ? "?refresh=true" : ""}`),

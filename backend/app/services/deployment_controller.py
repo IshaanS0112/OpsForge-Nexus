@@ -42,6 +42,7 @@ from app import catalog
 from app.config import settings
 from app.k8s import manifests as m
 from app.models import Deployment
+from app.services.burn_rate_engine import burn_rate
 from app.services.canary_engine import CanaryEngine, StageDecision
 from app.services.dependency_graph import DependencyGraph
 from app.services.deployment_engine import (
@@ -454,6 +455,7 @@ class DeploymentController:
             graph=self.graph(db),
             deployment_id=dep.id,
             context=context,
+            release_specific=self._release_specific(db, dep, now, decision, gate),
         )
         if decision.trigger != RollbackTrigger.MANUAL:
             self.rollback_engine.start_cooldown(dep.service_name)
@@ -464,6 +466,28 @@ class DeploymentController:
             db.rollback()
             dep.status_reason = f"rollback in progress, retrying: {exc}"
             db.commit()
+
+    def _release_specific(
+        self, db: Session, dep: Deployment, now: datetime, decision: RollbackDecision, gate: Optional[dict]
+    ) -> bool:
+        """Does the evidence pin the failure on this release rather than on
+        something it depends on? Yes when the candidate never served, or when
+        it failed its gate while the stable colour, which calls the same
+        dependencies, stayed under the page burn rate. Such an incident is
+        never filed as a cascade of an upstream incident."""
+        if decision.trigger == RollbackTrigger.ROLLOUT_FAILED:
+            return True
+        if decision.trigger not in (RollbackTrigger.CANARY_GATE_FAILED, RollbackTrigger.CONSECUTIVE_HEALTH_FAILURES):
+            return False
+        if gate is not None:
+            stable = gate.get("stable_burn")
+        else:
+            burn = self.canary.burn
+            counts = burn.window_counts(
+                db, dep.service_name, dep.stage_started_at or dep.deployed_at, now, color=dep.stable_color
+            )
+            stable = burn_rate(counts.bad, counts.total, burn.slo(db, dep.service_name).slo_target)
+        return stable is None or stable <= settings.canary_max_burn_rate
 
     def _complete_rollback(self, db: Session, dep: Deployment, now: datetime) -> None:
         """Idempotent: safe to retry on the next tick if a cluster call fails."""

@@ -8,7 +8,7 @@ on:
 
 jobs:
   backend:
-    name: Backend tests
+    name: Backend lint and tests
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -25,6 +25,10 @@ jobs:
         # runner. Installing requirements.txt alone leaves pytest absent and the
         # step below fails with "command not found".
         run: pip install -r requirements-dev.txt
+      - name: Lint
+        run: |
+          ruff check .
+          ruff format --check .
       - name: Run tests
         env:
           DATABASE_URL: "sqlite://"
@@ -32,7 +36,7 @@ jobs:
         run: python -m pytest -q
 
   frontend:
-    name: Frontend typecheck and build
+    name: Frontend typecheck, tests and build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -48,5 +52,53 @@ jobs:
         run: npm ci
       - name: Typecheck
         run: npm run typecheck
+      - name: Unit tests
+        run: npm test
       - name: Build
         run: npm run build
+
+  kind:
+    name: Real-cluster smoke test (kind)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install kind
+        uses: helm/kind-action@v1
+        with:
+          version: v0.33.0
+          install_only: true
+      - name: Create the cluster with the repo's own bootstrap script
+        env:
+          HOST_KUBECONFIG: ${{ runner.temp }}/kubeconfig
+        run: bash cluster/cluster-up.sh
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+      - name: Start the backend against the cluster
+        working-directory: backend
+        env:
+          DATABASE_URL: sqlite:///${{ runner.temp }}/opsforge.db
+          CLUSTER_MODE: kind
+          KUBECONFIG: ${{ runner.temp }}/kubeconfig
+          CLUSTER_NODE_HOST: localhost
+          DEMO_STARTUP_DELAY_S: "5"
+          HEALTH_CHECK_WINDOW_S: "15"
+        run: |
+          nohup uvicorn app.main:app --port 8000 > "$RUNNER_TEMP/backend.log" 2>&1 &
+          for _ in $(seq 1 60); do curl -sf localhost:8000/health && exit 0; sleep 2; done
+          cat "$RUNNER_TEMP/backend.log"; exit 1
+      - name: Smoke test
+        run: python3 scripts/kind_smoke.py
+      - name: Diagnostics
+        if: failure()
+        env:
+          KUBECONFIG: ${{ runner.temp }}/kubeconfig
+        run: |
+          tail -n 200 "$RUNNER_TEMP/backend.log" || true
+          kubectl -n opsforge get deploy,svc,pods -o wide || true
+          kubectl -n opsforge get events --sort-by=.lastTimestamp | tail -n 50 || true

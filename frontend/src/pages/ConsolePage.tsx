@@ -84,10 +84,25 @@ function Drawer({ snap, service, onSelect }: { snap: Snapshot; service: ServiceS
 function OpenIncidents({ snap, onSelect }: { snap: Snapshot; onSelect: (s: string) => void }) {
   const active = snap.services.filter((s) => s.incident);
   const roots = active.filter((s) => !s.incident!.is_cascading);
+  // Incidents on services the graph does not draw (external telemetry, retired services).
+  const elsewhere = Math.max(0, snap.summary.open_incidents - active.length);
   return (
-    <Panel eyebrow="On call" title={active.length ? `${active.length} open incident${active.length > 1 ? "s" : ""}` : "All quiet"}>
+    <Panel
+      eyebrow="On call"
+      title={active.length ? `${active.length} open incident${active.length > 1 ? "s" : ""}` : elsewhere ? "Graph quiet" : "All quiet"}
+    >
+      {elsewhere > 0 && (
+        <p className="mb-3 text-[12px] text-text-2">
+          {elsewhere} more on services outside the graph.{" "}
+          <Link to="/incidents" className="font-semibold underline-offset-2 hover:text-text hover:underline">
+            See all incidents →
+          </Link>
+        </p>
+      )}
       {active.length === 0 ? (
-        <Empty>No open incidents. Run a chaos drill or a failing rollout to see detection, cascades and rollback here.</Empty>
+        <Empty>
+          No open incidents on these services. Run a chaos drill or a failing rollout to see detection, cascades and rollback here.
+        </Empty>
       ) : (
         <ul className="space-y-2">
           {active

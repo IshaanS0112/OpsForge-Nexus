@@ -66,7 +66,7 @@ def _seed_incident(db, **incident_kw):
             message="x",
             occurrences=10,
             error_signature="UpstreamError:checkout-api->payments-svc:500",
-            root_signature="ChaosErrorBurst:ledger-svc",
+            root_signature="InternalError:ledger-svc@v1.0.0",
             logged_at=now - timedelta(seconds=20),
         )
     )
@@ -123,7 +123,7 @@ def test_signals_collected_before_llm(db):
         "signature": "UpstreamError:checkout-api->payments-svc:500",
         "count": 10,
     }
-    assert signals["upstream_root_signatures"][0]["signature"] == "ChaosErrorBurst:ledger-svc"
+    assert signals["upstream_root_signatures"][0]["signature"] == "InternalError:ledger-svc@v1.0.0"
     assert signals["detector_consensus"]["agreeing_layers"] == 2
     assert signals["burn_rate"] == {
         "window": "1h",
@@ -165,6 +165,13 @@ def test_cascade_and_chaos_context_reach_the_signals(db):
     assert causes[0].startswith("Injected fault: chaos drill ERROR_BURST on ledger-svc")
     assert "Upstream failure in ledger-svc" in causes[1]
 
+    # Blind: the drill is withheld, so the ranking has to come from the evidence.
+    blind = engine.run(db, incident, blind=True)
+    assert blind.signals["chaos_context"] is None and blind.signals["blind"] is True
+    blind_causes = [c["cause"] for c in blind.root_cause_candidates]
+    assert not any("chaos" in c.lower() for c in blind_causes)
+    assert "Upstream failure in ledger-svc" in blind_causes[0]
+
 
 def test_fallback_when_llm_fails(db):
     incident = _seed_incident(db)
@@ -200,3 +207,52 @@ def test_empty_output_falls_back_to_rules(db):
     incident = _seed_incident(db)
     report = RCAEngine(llm_client=_client(_Parsed(None, stop_reason="max_tokens"))).run(db, incident)
     assert report.llm_model_used == "rule-based-fallback"
+
+
+def test_blind_rca_names_a_latency_fault_from_the_metrics(db):
+    # A latency drill on a root service throws no errors, deploys nothing and
+    # cascades from nothing: the metric regression is the evidence left.
+    now = datetime(2026, 9, 18, 12, 0, 0)
+    exp = ChaosExperiment(
+        service_name="ledger-svc", fault_type="LATENCY_INJECTION", magnitude=400, target="all", injected_at=now
+    )
+    db.add(exp)
+    db.commit()
+    for i in range(30):
+        db.add(
+            Metric(
+                service_name="ledger-svc",
+                metric_name="latency_p95",
+                value=58.0 + i % 3,
+                z_score=0.2,
+                recorded_at=now - timedelta(minutes=5, seconds=-5 * i),
+            )
+        )
+    db.add(
+        Metric(
+            service_name="ledger-svc",
+            metric_name="latency_p95",
+            value=462.0,
+            z_score=48.3,
+            recorded_at=now - timedelta(seconds=5),
+        )
+    )
+    incident = Incident(
+        service_name="ledger-svc",
+        status="OPEN",
+        severity="CRITICAL",
+        trigger_reason="2/3 anomaly layers agree (zscore, isolation_forest)",
+        detected_at=now,
+        chaos_experiment_id=exp.id,
+        detection_context={"consensus": {"agreeing_layers": 2}},
+    )
+    db.add(incident)
+    db.commit()
+
+    engine = RCAEngine(llm_client=_client(exc=RuntimeError("llm down")))
+    told = engine.run(db, incident).root_cause_candidates
+    assert told[0]["cause"].startswith("Injected fault: chaos drill LATENCY_INJECTION on ledger-svc")
+    blind = engine.run(db, incident, blind=True).root_cause_candidates
+    assert blind[0]["cause"] == "Latency regression in ledger-svc"
+    assert blind[0]["confidence"] == "medium" and "z=48.3" in blind[0]["evidence"]
+    assert "baseline of 59.0 " in blind[0]["evidence"]  # the readings before the jump, not including it

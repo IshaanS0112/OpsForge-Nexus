@@ -270,10 +270,12 @@ class Handler(BaseHTTPRequestHandler):
         extra_ms = RELEASE_LATENCY_MS + faults.get("latency", 0.0)
         if extra_ms > 0:
             time.sleep(extra_ms / 1000)
-        if RELEASE_ERROR_RATE > 0 and random.random() < RELEASE_ERROR_RATE:
-            return 500, {"error_signature": f"ReleaseError:{SERVICE}@{VERSION}"}
-        if random.random() < faults.get("error", 0.0):
-            return 500, {"error_signature": f"ChaosErrorBurst:{SERVICE}"}
+        # A bad release and an injected burst fail the same way and log the
+        # same signature: the handler cannot tell why it failed, and neither
+        # can anything reading its logs. Telling them apart is RCA's job.
+        release_failed = RELEASE_ERROR_RATE > 0 and random.random() < RELEASE_ERROR_RATE
+        if release_failed or random.random() < faults.get("error", 0.0):
+            return 500, {"error_signature": f"InternalError:{SERVICE}@{VERSION}"}
 
         calls = []
         for dep in DEPENDENCIES:

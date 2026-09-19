@@ -259,6 +259,7 @@ function Confidence({ level }: { level: string }) {
 export function RcaReportView({ report }: { report: RCAReport }) {
   const [showSignals, setShowSignals] = useState(false);
   const fallback = report.llm_model_used === "rule-based-fallback";
+  const blind = report.signals?.blind === true;
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2 text-[12px] text-text-2">
@@ -266,6 +267,14 @@ export function RcaReportView({ report }: { report: RCAReport }) {
           <StatusBadge tone="warn" label="rule-based fallback" title="The LLM was unavailable or declined; the same signals were ranked by rules." />
         ) : (
           <span className="mono">{report.llm_model_used}</span>
+        )}
+        {blind && (
+          <span
+            className="rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-[var(--axis)]"
+            title="The chaos drill that caused this incident was withheld: the ranking comes from the evidence alone."
+          >
+            blind · drill withheld
+          </span>
         )}
         <span>· {fmtDateTime(parseUtc(report.generated_at))}</span>
       </div>

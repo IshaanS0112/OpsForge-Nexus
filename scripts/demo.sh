@@ -1,42 +1,86 @@
 #!/usr/bin/env bash
-# End-to-end demo of the OpsForge pipeline against a running backend.
-#   Terminal 1:  cd backend && HEALTH_CHECK_FAST=1 uvicorn app.main:app
-#   Terminal 2:  ./scripts/demo.sh
+# Walk through OpsForge Nexus end to end against a running backend:
 #
-# HEALTH_CHECK_FAST=1 keeps the health gate instant for a snappy demo; drop it
-# to watch the gate poll over the real 60s window.
+#   1. a healthy canary that walks 5% -> 25% -> 50% -> 100% and goes LIVE
+#   2. a bad-config canary that its SPRT gate rolls back, opening an incident
+#   3. a latency chaos drill on ledger-svc that cascades up the dependency graph
+#   4. RCA and business impact for the drill's root incident
+#
+# Start the stack first, either on the real kind cluster:
+#   docker compose up -d --build
+# or on the in-process simulated cluster:
+#   cd backend && CLUSTER_MODE=simulated uvicorn app.main:app
+# then run ./scripts/demo.sh. Each canary stage holds for its gate window
+# (45 s by default), so step 1 takes about four minutes. The anomaly layers
+# need about ten minutes of traffic to learn a baseline; until then the drill
+# is caught by the burn-rate page alone.
 set -euo pipefail
 
 BASE="${BASE_URL:-http://localhost:8000}"
-jq_get() { python3 -c "import sys,json;print(json.load(sys.stdin)$1)"; }
+SERVICE="${SERVICE:-checkout-api}"
+DRILL_SERVICE="${DRILL_SERVICE:-ledger-svc}"
+RUN="$(date +%H%M%S)"
 
 say() { printf "\n\033[1;36m== %s\033[0m\n" "$1"; }
+# json EXPR: print a Python expression over the JSON document on stdin (bound to d).
+json() { python3 -c "import sys, json; d = json.load(sys.stdin); print($1)"; }
+get() { curl -fsS "$BASE$1"; }
+post() {
+  local body="${2:-}"
+  [ -n "$body" ] || body='{}'
+  curl -fsS -X POST "$BASE$1" -H 'content-type: application/json' -d "$body"
+}
 
-say "1) Healthy deploy -> should go LIVE"
-DEP=$(curl -s -X POST "$BASE/deployments" -H 'content-type: application/json' \
-  -d '{"service_name":"checkout","version":"v1.0.0"}' | jq_get "['id']")
-echo "deployment: $DEP"
-for _ in $(seq 1 20); do
-  ST=$(curl -s "$BASE/deployments/$DEP" | jq_get "['status']")
-  echo "  status: $ST"; [ "$ST" = "LIVE" ] && break; sleep 0.5
+# Print each stage a deployment enters, with its reason, until it is LIVE or
+# ROLLED_BACK.
+follow_deployment() {
+  local id=$1 last="" line
+  for _ in $(seq 1 300); do
+    line=$(get "/deployments/$id" | json "d['status'] + '  ' + (d.get('status_reason') or '')")
+    if [ "${line%%  *}" != "${last%%  *}" ]; then echo "  $line"; fi
+    last=$line
+    case "$line" in LIVE*|ROLLED_BACK*) return 0 ;; esac
+    sleep 2
+  done
+  echo "  still running after 10 minutes; see the Deployments screen"
+}
+
+say "0) Cluster and control loop"
+get /cluster | json "f\"{d['mode']} cluster, context {d['context']}, loop running={d['control_loop']['running']}, traffic flowing={d['load_generator']['serving']}\""
+until [ "$(get /cluster | json "d['load_generator']['serving']")" = "True" ]; do
+  echo "  waiting for every live colour to be Ready..."; sleep 3
 done
 
-say "2) Bad deploy -> health gate fails -> auto-rollback -> incident"
-BAD=$(curl -s -X POST "$BASE/deployments" -H 'content-type: application/json' \
-  -d '{"service_name":"checkout","version":"v2.0.0","simulate_failure":true}' | jq_get "['id']")
-for _ in $(seq 1 20); do
-  ST=$(curl -s "$BASE/deployments/$BAD" | jq_get "['status']")
-  echo "  status: $ST"; [ "$ST" = "ROLLED_BACK" ] && break; sleep 0.5
+say "1) Healthy canary on $SERVICE"
+DEP=$(post /deployments "{\"service_name\":\"$SERVICE\",\"version\":\"v1.1.$RUN\"}" | json "d['id']")
+follow_deployment "$DEP"
+
+say "2) Bad-config canary on $SERVICE (15% of its requests fail)"
+BAD=$(post /deployments "{\"service_name\":\"$SERVICE\",\"version\":\"v1.2.$RUN\",\"simulate_failure\":true}" | json "d['id']")
+follow_deployment "$BAD"
+get /incidents | json "next((f\"incident {i['id']}: {i['trigger_reason']}\" for i in d if i['related_deployment_id'] == '$BAD'), 'no incident linked to the rollback')"
+
+say "3) Chaos drill: +400 ms latency on $DRILL_SERVICE for 60 s"
+EXP=$(post /chaos/inject "{\"service_name\":\"$DRILL_SERVICE\",\"fault_type\":\"LATENCY_INJECTION\",\"magnitude\":400,\"duration_s\":60}" | json "d['id']")
+echo "  experiment $EXP"
+for _ in $(seq 1 120); do
+  [ "$(get "/chaos/experiments/$EXP" | json "d['status']")" = "COMPLETED" ] && break
+  sleep 3
 done
+get "/chaos/experiments/$EXP" | json "'  ' + d['notes']"
 
-INC=$(curl -s "$BASE/incidents" | jq_get "[0]['id']")
-echo "incident: $INC"
-curl -s "$BASE/incidents" | jq_get "[0]['trigger_reason']"
+ROOT=$(get /incidents | json "next((i['id'] for i in d if i['chaos_experiment_id'] == '$EXP' and not i['is_cascading']), '')")
+if [ -z "$ROOT" ]; then echo "  no root incident was opened for the drill"; exit 1; fi
+get "/incidents/$ROOT/cascade-tree" | json "'  root ' + d['root']['service_name'] + ' <- ' + (', '.join(c['service_name'] for c in d['children']) or 'no cascade')"
 
-say "3) Trigger RCA (structured signals -> LLM or rule-based fallback)"
-curl -s -X POST "$BASE/incidents/$INC/trigger-rca" | python3 -m json.tool
+say "4) RCA over the root incident (structured signals, then the model or the rule-based fallback)"
+RANKING="'\n'.join(f\"  #{n} [{c['confidence']}] {c['cause']}\" for n, c in enumerate(d['root_cause_candidates'], 1)) + f\"\n  ranked by {d['llm_model_used']}\""
+echo "  told about the drill:"
+post "/incidents/$ROOT/trigger-rca" | json "$RANKING"
+echo "  blind (the drill withheld, evidence only):"
+post "/incidents/$ROOT/trigger-rca?blind=true" | json "$RANKING"
 
-say "4) Business impact (auditable calculation_basis)"
-curl -s "$BASE/incidents/$INC/business-impact" | python3 -m json.tool
+say "5) Business impact"
+get "/incidents/$ROOT/business-impact?refresh=true" | python3 -m json.tool
 
-say "Done."
+say "Done. The Ops Console shows all of this at http://localhost:8080 (compose) or :5173 (vite)."

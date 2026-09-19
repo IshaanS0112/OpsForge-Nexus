@@ -344,6 +344,9 @@ class Runtime:
         for s, b in burns.items():
             if b.worst != "FAST_BURN":
                 continue
+            # Only the latest rollout is watched. A newer rollout reuses the
+            # standby colour, so the release before it has no warm colour left
+            # to flip back to (manual rollback refuses it for the same reason).
             dep = self.deployments.latest_for(db, s)
             if dep is None or not self.deployments.watch_window_open(dep, now):
                 continue
@@ -487,6 +490,12 @@ class Runtime:
                 self._acting.add(service)
             else:
                 self._acting.discard(service)
+            # Catalog services get this from _update_quiet each tick; the tick
+            # then resolves any incident that has been quiet long enough.
+            if result.agreeing_layers > 0:
+                self.quiet_since.pop(service, None)
+            else:
+                self.quiet_since.setdefault(service, now)
             active = self.incidents.active(db, service) is not None
             self.suite.learn(result, not result.auto_action and not active)
             self.results[service] = result

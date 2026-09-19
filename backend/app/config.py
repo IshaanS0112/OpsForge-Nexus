@@ -105,6 +105,10 @@ class Settings(BaseSettings):
 
     # --- Incidents / cascade ---
     cascade_window_min: float = 5.0
+    # How far a dependent's incident may *lead* its upstream root. A fault is
+    # detected within the detection bound of its onset and a dependent cannot
+    # degrade before its upstream does, so the lead is bounded by that bound.
+    cascade_skew_s: float = 90.0
     incident_resolve_after_s: float = 60.0  # quiet this long -> auto-resolve
     data_retention_hours: float = 96.0
 

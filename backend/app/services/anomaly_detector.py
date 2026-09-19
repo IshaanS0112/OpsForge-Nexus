@@ -42,7 +42,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.clock import utcnow
@@ -235,24 +235,46 @@ class AnomalyDetectorService:
             .order_by(Metric.recorded_at.desc())
         )
         out: dict[str, dict] = {}
+        onset: dict[str, datetime] = {}  # first anomalous reading per metric
         for m in db.execute(stmt).scalars():
-            if abs(m.z_score) <= settings.anomaly_z_threshold:
+            # One-sided, like the detector layers: every metric is "higher is worse".
+            if m.z_score <= settings.anomaly_z_threshold:
                 continue
+            onset[m.metric_name] = m.recorded_at  # newest-first, so this ends at the earliest
             # keep the strongest anomaly per metric within the window
             prev = out.get(m.metric_name)
-            if prev is None or abs(m.z_score) > abs(prev["z_score"]):
-                baseline_window = self._recent_window(db, service, m.metric_name)
-                baseline = statistics.fmean(baseline_window) if baseline_window else None
+            if prev is None or m.z_score > prev["z_score"]:
                 out[m.metric_name] = {
                     "metric": m.metric_name,
                     "z_score": round(m.z_score, 2),
                     "value": m.value,
-                    "baseline": round(baseline, 4) if baseline is not None else None,
                     "seasonal_residual_z": round(m.seasonal_residual_z, 2)
                     if m.seasonal_residual_z is not None
                     else None,
                 }
+        for metric, entry in out.items():
+            baseline = self._baseline(db, service, metric, before=onset[metric])
+            entry["baseline"] = round(baseline, 4) if baseline is not None else None
         return list(out.values())
+
+    @staticmethod
+    def _baseline(db: Session, service: str, metric: str, before: datetime) -> Optional[float]:
+        """What the metric looked like before the anomaly began: the mean of
+        the readings before its onset that were not themselves anomalous. The
+        latest readings would include the incident and understate the jump."""
+        stmt = (
+            select(Metric.value)
+            .where(
+                Metric.service_name == service,
+                Metric.metric_name == metric,
+                Metric.recorded_at < before,
+                or_(Metric.z_score.is_(None), Metric.z_score <= settings.anomaly_z_threshold),
+            )
+            .order_by(Metric.recorded_at.desc())
+            .limit(settings.anomaly_window_size)
+        )
+        values = [row[0] for row in db.execute(stmt).all()]
+        return statistics.fmean(values) if values else None
 
 
 def default_since() -> datetime:

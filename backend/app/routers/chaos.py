@@ -21,8 +21,9 @@ def fault_types():
 @router.post("/inject", response_model=ChaosExperimentOut, status_code=201)
 def inject(payload: ChaosInject, db: Session = Depends(get_db), rt: Runtime = Depends(get_runtime)):
     """Inject a real fault and start measuring: detection latency (to the
-    first tick where >= 2 anomaly layers agree), rollback latency (for a
-    canary-targeted drill) and recovery latency."""
+    first of anomaly consensus, a FAST_BURN page, or for a canary-targeted
+    drill the canary gate failing), rollback latency (canary-targeted drills)
+    and recovery latency."""
     try:
         exp = rt.chaos.inject(
             db,

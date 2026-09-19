@@ -52,6 +52,14 @@ RCA_SYSTEM_PROMPT = (
 )
 
 
+METRIC_LABELS = {
+    "latency_p95": "Latency",
+    "error_rate": "Error-rate",
+    "cpu_usage": "CPU",
+    "memory_usage": "Memory",
+}
+
+
 class RCACandidate(BaseModel):
     cause: str
     confidence: Literal["low", "medium", "high"]
@@ -353,6 +361,22 @@ class RCAEngine:
                     "evidence": f"Deployed {dep['minutes_before_incident']} min before incident onset",
                 }
             )
+        # The service's own strongest metric regression: the evidence left for
+        # a fault that throws no errors, such as added latency.
+        anomalies = sorted(signals.get("metric_anomalies") or [], key=lambda a: -a["z_score"])
+        if anomalies and not dep_ctx.get("is_cascading"):
+            top = anomalies[0]
+            layers = consensus.get("agreeing_layers") or 0
+            label = METRIC_LABELS.get(top["metric"], top["metric"])
+            candidates.append(
+                {
+                    "cause": f"{label} regression in {signals['service_name']}",
+                    "confidence": "medium" if layers >= 2 else "low",
+                    "evidence": f"{top['metric']} peaked at {top['value']:.4g} against a baseline of "
+                    f"{top['baseline']} (z={top['z_score']})"
+                    + (f"; {layers}/3 detector layers agreed" if layers else ""),
+                }
+            )
         for err in signals.get("top_error_signatures", [])[:2]:
             candidates.append(
                 {
@@ -383,8 +407,13 @@ class RCAEngine:
         return {"root_cause_candidates": candidates[:3]}
 
     # ---------------- Orchestration ----------------
-    def run(self, db: Session, incident: Incident) -> RCAReport:
+    def run(self, db: Session, incident: Incident, blind: bool = False) -> RCAReport:
+        """``blind`` withholds the chaos drill context, so a drill can test
+        whether RCA finds the injected fault from the evidence alone."""
         signals = self.collect_signals(db, incident)  # Steps 1-2 always run
+        if blind:
+            signals["chaos_context"] = None
+            signals["blind"] = True
         self._last_model = None
         try:
             result = self._call_llm(signals)  # Steps 3-4
