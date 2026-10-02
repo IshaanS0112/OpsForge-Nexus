@@ -10,7 +10,7 @@ One drill per fault type, plus a canary-linked drill:
                                                 requests; its gate should roll it back
 
 Before each drill the script waits until every service is quiet (no open
-incident, no burn-rate alert, no rollout or drill in flight) and until the
+incident, no FAST_BURN page, no rollout or drill in flight) and until the
 z-score and Isolation Forest layers are warm, so drills do not bleed into each
 other and consensus can vote. After each drill it ranks the root incident's
 causes twice, told about the drill and blind, and records whether the blind
@@ -21,8 +21,8 @@ docs/drills/README.md is regenerated from every record there. Every record
 carries the cluster mode, so a simulated run is never mistaken for a real one.
 
 Usage:
-    python scripts/run_drills.py                    # the whole suite
-    python scripts/run_drills.py --only pod-kill    # one drill
+    python3 scripts/run_drills.py                    # the whole suite
+    python3 scripts/run_drills.py --only pod-kill    # one drill
 """
 
 from __future__ import annotations
@@ -59,8 +59,11 @@ def quiet_problems(snap: dict, require_warm: bool) -> list[str]:
             problems.append(f"{s['name']} has an open incident")
         if s["deployment"]:
             problems.append(f"{s['name']} has a rollout in flight")
-        if (s["burn"] or {}).get("worst"):
-            problems.append(f"{s['name']} {s['burn']['worst']}")
+        # Only a page matters here. The slower tickets (MEDIUM_BURN over 30 min,
+        # SLOW_BURN over 6 h) keep firing long after a one-minute drill, and
+        # they play no part in detecting or rolling back the next one.
+        if (s["burn"] or {}).get("worst") == "FAST_BURN":
+            problems.append(f"{s['name']} FAST_BURN")
         consensus = s["consensus"] or {}
         if consensus.get("agreeing_layers"):
             problems.append(f"{s['name']} {consensus['agreeing_layers']} layer(s) flagging")

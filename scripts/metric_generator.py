@@ -15,8 +15,8 @@ The seasonal layer needs two full periods of history, so a short run is
 judged by the other two layers only.
 
 Usage:
-    python scripts/metric_generator.py --service external-api
-    python scripts/metric_generator.py --service external-api --inject
+    python3 scripts/metric_generator.py --service external-api
+    python3 scripts/metric_generator.py --service external-api --inject
 """
 
 from __future__ import annotations

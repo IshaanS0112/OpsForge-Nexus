@@ -88,6 +88,12 @@ jobs:
           CLUSTER_NODE_HOST: localhost
           DEMO_STARTUP_DELAY_S: "5"
           HEALTH_CHECK_WINDOW_S: "15"
+          # Shorter stages so the canary walks all four in about two minutes.
+          # The load itself stays at the default: every edge request fans out
+          # to its dependencies, so raising it saturates the deeper services
+          # and the gate then (correctly) fails the rollout.
+          CANARY_STAGE_WINDOW_S: "20"
+          CANARY_MIN_REQUESTS: "10"
         run: |
           nohup uvicorn app.main:app --port 8000 > "$RUNNER_TEMP/backend.log" 2>&1 &
           for _ in $(seq 1 60); do curl -sf localhost:8000/health && exit 0; sleep 2; done

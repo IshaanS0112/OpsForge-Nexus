@@ -8,11 +8,12 @@ the cluster actually did, not only on what the API reports:
    and synthetic traffic flows
 2. an unpullable image fails its rollout fast and never takes traffic
 3. a blue-green rollout switches the live Service's selector
-4. an error burst on inventory-svc is detected by the system's own signals,
+4. a canary walks every stage to LIVE, each stage passing its burn-rate gate
+5. an error burst on inventory-svc is detected by the system's own signals,
    and the services that call it are filed as cascading from it
 
 Usage:
-    python scripts/kind_smoke.py        # BASE_URL defaults to http://localhost:8000
+    python3 scripts/kind_smoke.py        # BASE_URL defaults to http://localhost:8000
 """
 
 from __future__ import annotations
@@ -92,6 +93,20 @@ def main() -> int:
     k8s = get(f"/deployments/{dep['id']}/k8s-status")
     expect(k8s["live_color"] == d["target_color"], f"live Service selector now on {k8s['live_color']}")
     expect(k8s["candidate"]["version"] == "v1.1.0", "the new colour's pods run v1.1.0")
+
+    step("a canary walks every stage to LIVE")
+    dep = post("/deployments", {"service_name": "notification-svc", "version": "v1.2.0"})
+    d = wait_for("the canary to finish", deployment_done(dep["id"]), 600)
+    stages = [h["stage"] for h in d["stage_history"]]
+    expect(d["status"] == "LIVE", f"LIVE after {' -> '.join(stages)}")
+    for stage in ("CANARY_5", "CANARY_25", "CANARY_50", "CANARY_100"):
+        expect(stage in stages, f"{stage} held its confirmation window")
+    gates = [h["gate"] for h in d["stage_history"] if h.get("gate")]
+    expect(bool(gates) and all(g["verdict"] == "PASS" for g in gates), f"{len(gates)} burn-rate gates passed")
+    expect(
+        get(f"/deployments/{dep['id']}/k8s-status")["live_color"] == d["target_color"],
+        "the live Service selector followed the canary",
+    )
 
     step("an error burst is detected and its cascade classified")
     drill_id = post(

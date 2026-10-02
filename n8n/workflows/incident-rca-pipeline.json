@@ -1,4 +1,5 @@
 {
+  "id": "opsforgeIncidentRca",
   "name": "OpsForge — Incident RCA Pipeline",
   "nodes": [
     {
@@ -12,7 +13,10 @@
       "name": "OpsForge Event",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [160, 380],
+      "position": [
+        160,
+        380
+      ],
       "webhookId": "opsforge-incident",
       "notes": "The backend posts here (N8N_WEBHOOK_URL) when an incident opens or a chaos drill completes."
     },
@@ -32,7 +36,10 @@
       "name": "Incident or drill?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [380, 380]
+      "position": [
+        380,
+        380
+      ]
     },
     {
       "parameters": {
@@ -49,7 +56,10 @@
       "name": "Root incident?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [600, 260],
+      "position": [
+        600,
+        260
+      ],
       "notes": "A cascading incident is filed under its root. The root's RCA covers it, so only roots are analysed."
     },
     {
@@ -61,7 +71,10 @@
       "name": "Fetch Cascade Tree",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [820, 160]
+      "position": [
+        820,
+        160
+      ]
     },
     {
       "parameters": {
@@ -75,7 +88,10 @@
       "name": "Trigger RCA Engine",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [1040, 160]
+      "position": [
+        1040,
+        160
+      ]
     },
     {
       "parameters": {
@@ -86,7 +102,10 @@
       "name": "Fetch Business Impact",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [1260, 160]
+      "position": [
+        1260,
+        160
+      ]
     },
     {
       "parameters": {
@@ -96,7 +115,10 @@
       "name": "Combine Report",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1480, 160]
+      "position": [
+        1480,
+        160
+      ]
     },
     {
       "parameters": {},
@@ -104,7 +126,10 @@
       "name": "Notify on-call (mock)",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [1700, 80],
+      "position": [
+        1700,
+        80
+      ],
       "notes": "Swap this NoOp for a Slack / PagerDuty / email node once credentials exist. Mocked by default."
     },
     {
@@ -120,7 +145,10 @@
       "name": "Store Combined Report",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [1700, 260]
+      "position": [
+        1700,
+        260
+      ]
     },
     {
       "parameters": {
@@ -130,7 +158,10 @@
       "name": "Note Cascade",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [820, 380]
+      "position": [
+        820,
+        380
+      ]
     },
     {
       "parameters": {
@@ -140,7 +171,10 @@
       "name": "Drill Verdict",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [600, 520]
+      "position": [
+        600,
+        520
+      ]
     },
     {
       "parameters": {},
@@ -148,47 +182,124 @@
       "name": "Notify drill result (mock)",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [820, 520]
+      "position": [
+        820,
+        520
+      ]
     }
   ],
   "connections": {
     "OpsForge Event": {
-      "main": [[{ "node": "Incident or drill?", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Incident or drill?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Incident or drill?": {
       "main": [
-        [{ "node": "Root incident?", "type": "main", "index": 0 }],
-        [{ "node": "Drill Verdict", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Root incident?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Drill Verdict",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Root incident?": {
       "main": [
-        [{ "node": "Fetch Cascade Tree", "type": "main", "index": 0 }],
-        [{ "node": "Note Cascade", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Fetch Cascade Tree",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Note Cascade",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Fetch Cascade Tree": {
-      "main": [[{ "node": "Trigger RCA Engine", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Trigger RCA Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Trigger RCA Engine": {
-      "main": [[{ "node": "Fetch Business Impact", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Fetch Business Impact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Fetch Business Impact": {
-      "main": [[{ "node": "Combine Report", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Combine Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Combine Report": {
       "main": [
         [
-          { "node": "Notify on-call (mock)", "type": "main", "index": 0 },
-          { "node": "Store Combined Report", "type": "main", "index": 0 }
+          {
+            "node": "Notify on-call (mock)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Store Combined Report",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
     "Drill Verdict": {
-      "main": [[{ "node": "Notify drill result (mock)", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Notify drill result (mock)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-  "settings": { "executionOrder": "v1" },
+  "settings": {
+    "executionOrder": "v1"
+  },
   "active": false,
   "versionId": "opsforge-v3",
   "meta": {

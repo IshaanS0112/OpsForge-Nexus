@@ -11,7 +11,7 @@ Prereq: the backend must run WITH a key so the model path (not the fallback)
 executes, e.g. ``ANTHROPIC_API_KEY=sk-ant-... docker compose up -d``. Then,
 from the repo root:
 
-    python scripts/capture_rca_sample.py
+    python3 scripts/capture_rca_sample.py
 """
 
 from __future__ import annotations
