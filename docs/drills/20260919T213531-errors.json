@@ -1,0 +1,132 @@
+{
+  "drill": "errors",
+  "recorded_at": "2026-09-19T21:35:31+00:00",
+  "cluster": {
+    "mode": "kind",
+    "context": "kind-opsforge",
+    "server_version": "v1.37.0",
+    "namespace": "opsforge"
+  },
+  "spec": {
+    "service_name": "inventory-svc",
+    "fault_type": "ERROR_BURST",
+    "magnitude": 0.5,
+    "duration_s": 60
+  },
+  "experiment": {
+    "id": "98c1e75e-da98-4a00-a34c-23e3b32d7850",
+    "service_name": "inventory-svc",
+    "fault_type": "ERROR_BURST",
+    "magnitude": 0.5,
+    "target": "all",
+    "status": "COMPLETED",
+    "injected_at": "2026-09-19T21:34:19.124771",
+    "completed_at": "2026-09-19T21:35:28.366244",
+    "duration_s": 60,
+    "detection_latency_seconds": 13.17,
+    "rollback_latency_seconds": null,
+    "recovery_latency_seconds": 69.24,
+    "detection_bound_s": 90.0,
+    "rollback_bound_s": 90.0,
+    "passed": true,
+    "notes": "PASS: detected in 13.2s (signal at 13.2s, consensus at 13.2s)",
+    "deployment_id": null,
+    "affected_pods": [
+      {
+        "pod": "inventory-svc-blue-75f8f56d78-sw78l",
+        "color": "blue",
+        "applied": true
+      }
+    ],
+    "timeline": [
+      {
+        "t": 0.0,
+        "at": "2026-09-19T21:34:19.124771",
+        "event": "injected ERROR_BURST (0.5 fraction of requests) into 1 pod(s), target=all"
+      },
+      {
+        "t": 13.2,
+        "at": "2026-09-19T21:34:32.292835",
+        "event": "first signal: 2/3 anomaly layers"
+      },
+      {
+        "t": 13.2,
+        "at": "2026-09-19T21:34:32.292835",
+        "event": "detected by anomaly consensus (2/3 layers agree)"
+      },
+      {
+        "t": 64.1,
+        "at": "2026-09-19T21:35:23.191026",
+        "event": "fault cleared (duration elapsed)"
+      },
+      {
+        "t": 69.2,
+        "at": "2026-09-19T21:35:28.366244",
+        "event": "recovered: service healthy again"
+      },
+      {
+        "t": 69.2,
+        "at": "2026-09-19T21:35:28.366244",
+        "event": "PASS: detected in 13.2s"
+      }
+    ]
+  },
+  "deployment": null,
+  "incidents": [
+    {
+      "id": "f9864f84-b1c2-41e0-8d37-db115c6f9e1c",
+      "service_name": "inventory-svc",
+      "detected_at": "2026-09-19T21:34:32.292835",
+      "resolved_at": null,
+      "status": "OPEN",
+      "severity": "HIGH",
+      "trigger_reason": "2/3 anomaly layers agree (zscore, seasonal); SLOW_BURN 3d/6h at 1.3x/1.9x",
+      "related_deployment_id": null,
+      "is_cascading": false,
+      "root_incident_id": null,
+      "blast_radius_services": [
+        "checkout-api",
+        "notification-svc"
+      ],
+      "chaos_experiment_id": "98c1e75e-da98-4a00-a34c-23e3b32d7850"
+    }
+  ],
+  "root_incident_id": "f9864f84-b1c2-41e0-8d37-db115c6f9e1c",
+  "cascade": [
+    "notification-svc",
+    "checkout-api"
+  ],
+  "rca": {
+    "model": "rule-based-fallback",
+    "told": [
+      {
+        "cause": "Injected fault: chaos drill ERROR_BURST on inventory-svc",
+        "confidence": "high",
+        "evidence": "drill 98c1e75e-da98-4a00-a34c-23e3b32d7850 injected ERROR_BURST (magnitude 0.5, target all) at 2026-09-19T21:34:19.124771"
+      },
+      {
+        "cause": "Error-rate regression in inventory-svc",
+        "confidence": "medium",
+        "evidence": "error_rate peaked at 0.6053 against a baseline of 0.0 (z=60.53); 2/3 detector layers agreed"
+      },
+      {
+        "cause": "Elevated errors: InternalError:inventory-svc@v1.0.0",
+        "confidence": "medium",
+        "evidence": "270 occurrences in lookback window"
+      }
+    ],
+    "blind": [
+      {
+        "cause": "Error-rate regression in inventory-svc",
+        "confidence": "medium",
+        "evidence": "error_rate peaked at 0.6053 against a baseline of 0.0 (z=60.53); 2/3 detector layers agreed"
+      },
+      {
+        "cause": "Elevated errors: InternalError:inventory-svc@v1.0.0",
+        "confidence": "medium",
+        "evidence": "270 occurrences in lookback window"
+      }
+    ],
+    "blind_top_names_service": true
+  }
+}

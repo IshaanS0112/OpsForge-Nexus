@@ -1,0 +1,142 @@
+{
+  "drill": "pod-kill",
+  "recorded_at": "2026-09-19T21:57:26+00:00",
+  "cluster": {
+    "mode": "kind",
+    "context": "kind-opsforge",
+    "server_version": "v1.37.0",
+    "namespace": "opsforge"
+  },
+  "spec": {
+    "service_name": "payments-svc",
+    "fault_type": "POD_KILL",
+    "magnitude": 1.0,
+    "duration_s": 60
+  },
+  "experiment": {
+    "id": "c391b143-1468-4b7c-8316-8ea3f5c1bdde",
+    "service_name": "payments-svc",
+    "fault_type": "POD_KILL",
+    "magnitude": 1.0,
+    "target": "all",
+    "status": "COMPLETED",
+    "injected_at": "2026-09-19T21:56:23.529025",
+    "completed_at": "2026-09-19T21:57:26.001561",
+    "duration_s": 60,
+    "detection_latency_seconds": 11.47,
+    "rollback_latency_seconds": null,
+    "recovery_latency_seconds": 62.47,
+    "detection_bound_s": 90.0,
+    "rollback_bound_s": 90.0,
+    "passed": true,
+    "notes": "PASS: detected in 11.5s (fast burn at 11.5s, signal at 16.5s, consensus at 16.5s)",
+    "deployment_id": null,
+    "affected_pods": [
+      {
+        "pod": "payments-svc-blue-6d55f77cf6-j62r7",
+        "color": "blue",
+        "applied": true
+      }
+    ],
+    "timeline": [
+      {
+        "t": 0.0,
+        "at": "2026-09-19T21:56:23.529025",
+        "event": "injected POD_KILL (1 fraction of pods) into 1 pod(s), target=all"
+      },
+      {
+        "t": 11.5,
+        "at": "2026-09-19T21:56:34.999690",
+        "event": "detected by FAST_BURN alert (1h and 5m windows > 14.4x)"
+      },
+      {
+        "t": 16.5,
+        "at": "2026-09-19T21:56:40.076501",
+        "event": "first signal: 2/3 anomaly layers"
+      },
+      {
+        "t": 16.5,
+        "at": "2026-09-19T21:56:40.076501",
+        "event": "detected by anomaly consensus (2/3 layers agree)"
+      },
+      {
+        "t": 62.5,
+        "at": "2026-09-19T21:57:26.001561",
+        "event": "fault cleared (duration elapsed)"
+      },
+      {
+        "t": 62.5,
+        "at": "2026-09-19T21:57:26.001561",
+        "event": "recovered: service healthy again"
+      },
+      {
+        "t": 62.5,
+        "at": "2026-09-19T21:57:26.001561",
+        "event": "PASS: detected in 11.5s"
+      }
+    ]
+  },
+  "deployment": null,
+  "incidents": [
+    {
+      "id": "16210c57-31ac-4507-9bfa-fe2f8a1f5a26",
+      "service_name": "payments-svc",
+      "detected_at": "2026-09-19T21:56:34.999690",
+      "resolved_at": null,
+      "status": "OPEN",
+      "severity": "CRITICAL",
+      "trigger_reason": "FAST_BURN 1h/5m at 39.4x/29.4x",
+      "related_deployment_id": null,
+      "is_cascading": false,
+      "root_incident_id": null,
+      "blast_radius_services": [
+        "checkout-api",
+        "notification-svc"
+      ],
+      "chaos_experiment_id": "c391b143-1468-4b7c-8316-8ea3f5c1bdde"
+    }
+  ],
+  "root_incident_id": "16210c57-31ac-4507-9bfa-fe2f8a1f5a26",
+  "cascade": [
+    "notification-svc",
+    "checkout-api"
+  ],
+  "rca": {
+    "model": "rule-based-fallback",
+    "told": [
+      {
+        "cause": "Injected fault: chaos drill POD_KILL on payments-svc",
+        "confidence": "high",
+        "evidence": "drill c391b143-1468-4b7c-8316-8ea3f5c1bdde injected POD_KILL (magnitude 1.0, target all) at 2026-09-19T21:56:23.529025"
+      },
+      {
+        "cause": "Latency regression in payments-svc",
+        "confidence": "low",
+        "evidence": "latency_p95 peaked at 3001 against a baseline of 92.7314 (z=622.79)"
+      },
+      {
+        "cause": "Elevated errors: GatewayTimeout:payments-svc",
+        "confidence": "medium",
+        "evidence": "152 occurrences in lookback window"
+      }
+    ],
+    "blind": [
+      {
+        "cause": "Latency regression in payments-svc",
+        "confidence": "low",
+        "evidence": "latency_p95 peaked at 3001 against a baseline of 92.7314 (z=622.79)"
+      },
+      {
+        "cause": "Elevated errors: GatewayTimeout:payments-svc",
+        "confidence": "medium",
+        "evidence": "152 occurrences in lookback window"
+      },
+      {
+        "cause": "Elevated errors: ConnectionError:payments-svc",
+        "confidence": "medium",
+        "evidence": "29 occurrences in lookback window"
+      }
+    ],
+    "blind_top_names_service": true
+  }
+}

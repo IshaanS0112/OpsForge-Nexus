@@ -71,9 +71,14 @@ two Deployments, `{svc}-blue` and `{svc}-green`; a live Service `{svc}` whose
 selector picks a colour; and one pinned Service per colour, used for canary
 traffic and health probes. All are NodePorts, so the backend reaches them from
 the compose network. Every pod template carries a hash of the workload code. A
-pod only picks up new code when it restarts, so at startup the backend rolls any
-Deployment whose pods run older code than the ConfigMap now ships, the way
-`kubectl rollout restart` would. A colour never mixes two versions of the code.
+pod only picks up new code, or a changed operational setting such as the
+readiness warm-up, when it restarts, so at startup the backend rolls any
+Deployment that has drifted from it, the way `kubectl rollout restart` would.
+Only the drifting keys are patched, so a release's own `config_diff` env
+survives. A chaos drill found the need for this: pod-kill caused no outage at
+all because the pods still carried a 3-second readiness delay from an earlier
+session instead of the configured 15, so replacements were Ready before anything
+could notice.
 
 **Simulated mode.** [`sim_cluster.py`](../backend/app/services/sim_cluster.py)
 implements the same interface in memory: pods with readiness delays, a queueing
@@ -101,6 +106,17 @@ every 5 seconds:
 10. advance chaos drills
 11. resolve incidents whose service has been quiet for 60 s
 12. retention and downsampling
+
+**Its own metrics.** `GET /metrics` is Prometheus exposition for the backend
+itself ([`observability.py`](../backend/app/observability.py)): how long a tick
+takes, how many ticks failed, what the system decided (rollbacks by trigger,
+canary gate verdicts, drills by fault type and verdict, RCA model versus
+fallback), and the API's own request counters. Per-service gauges — burn rate,
+layers flagging, layer warm-up, requests per second — are read from the live
+runtime *when Prometheus scrapes*, never written on a timer, so a wedged control
+loop shows up as a rising `opsforge_seconds_since_last_tick` instead of gauges
+that look healthy because nothing is updating them. (`/metrics/{service}` is a
+different thing: the V1 telemetry API, readings the backend stores.)
 
 Rollouts are **controller-style**: the desired state lives in the `deployments`
 table and each tick moves a rollout one step from wherever it is. A backend
@@ -236,7 +252,10 @@ anything, and it destroys the warm standby that would be needed later.
 rollbacks for that service are suppressed for 5 minutes: a rollback can itself
 cause a transient anomaly, and acting on it would loop. Rollout-safety gates are
 never suppressed; a candidate that fails its own gate must be aborted, not left
-half rolled out.
+half rolled out. The window is a row in `rollback_cooldowns`, so a restart does
+not forget it and a second worker sees the same one. `evaluate()` itself stays
+pure: the caller reads the window and passes it in, which is why every trigger
+can be unit-tested without a database.
 
 **Only the latest rollout is watched.** A newer rollout reuses the standby
 colour, so the release before it has no warm colour to flip back to. Manual
@@ -505,15 +524,16 @@ lives in n8n.
 `app/models/__init__.py`. The V1 tables (`deployments`, `incidents`, `metrics`,
 `logs`, `rca_reports`, `business_impact`) gain columns for rollouts, cascades
 and per-layer detector output. New tables: `service_dependencies`,
-`anomaly_consensus`, `slo_config`, `sli_samples`, `burn_rate_alerts` and
-`chaos_experiments`. Portable `GUID` and `JSONType` column types resolve to
+`anomaly_consensus`, `slo_config`, `sli_samples`, `burn_rate_alerts`,
+`chaos_experiments` and `rollback_cooldowns`. Portable `GUID` and `JSONType` column types resolve to
 native `UUID`/`JSONB` on PostgreSQL and `CHAR(36)`/`JSON` on SQLite, so the same
 ORM serves production and the test suite.
 
 Schema changes are Alembic migrations (`backend/migrations`): `0001` is the V1
-baseline and `0002` adds V3. On startup, a V1 database without migration history
-is stamped `0001` and upgraded in place; existing rows are kept. SQLite runs the
-migrations in batch mode. [`schema.sql`](schema.sql) is the resulting PostgreSQL
+baseline, `0002` adds V3 and `0003` moves the rollback cooldown into the
+database. On startup, a database without migration history is stamped at the
+newest revision whose tables it already has, then upgraded; existing rows are
+kept. SQLite runs the migrations in batch mode. [`schema.sql`](schema.sql) is the resulting PostgreSQL
 DDL, for reading.
 
 ---
@@ -561,8 +581,6 @@ text alternative.
 - **Traffic is synthetic.** The load generator is realistic in shape (open-loop,
   daily cycle, batch burst), but it is not user traffic.
 - **Single tenant, no auth.** CORS is open for local use.
-- **In-memory cooldown.** The rollback cooldown does not survive a restart;
-  shared storage would fix that for multiple workers.
 - **Notifications are mocked.** The n8n notify nodes are NoOps until
   credentials exist.
 

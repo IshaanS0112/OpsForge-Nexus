@@ -1,7 +1,8 @@
 -- OpsForge Nexus: PostgreSQL schema, for reading.
 --
 -- The source of truth is the Alembic migrations in backend/migrations
--- (0001 = V1 baseline, 0002 = V3); the backend applies them on startup.
+-- (0001 = V1 baseline, 0002 = V3, 0003 = durable rollback cooldown); the
+-- backend applies them on startup.
 -- This file is `pg_dump --schema-only` of a fresh database after
 -- `alembic upgrade head`. A V1 database upgraded in place ends up with the
 -- same schema.
@@ -176,6 +177,14 @@ CREATE TABLE public.rca_reports (
     signals jsonb
 );
 
+CREATE TABLE public.rollback_cooldowns (
+    service_name character varying(100) NOT NULL,
+    started_at timestamp without time zone NOT NULL,
+    until_at timestamp without time zone NOT NULL,
+    trigger character varying(40),
+    deployment_id uuid
+);
+
 CREATE TABLE public.service_dependencies (
     id uuid NOT NULL,
     service_name character varying(100) NOT NULL,
@@ -249,6 +258,9 @@ ALTER TABLE ONLY public.metrics
 ALTER TABLE ONLY public.rca_reports
     ADD CONSTRAINT rca_reports_pkey PRIMARY KEY (id);
 
+ALTER TABLE ONLY public.rollback_cooldowns
+    ADD CONSTRAINT rollback_cooldowns_pkey PRIMARY KEY (service_name);
+
 ALTER TABLE ONLY public.service_dependencies
     ADD CONSTRAINT service_dependencies_pkey PRIMARY KEY (id);
 
@@ -292,3 +304,6 @@ ALTER TABLE ONLY public.logs
 
 ALTER TABLE ONLY public.rca_reports
     ADD CONSTRAINT rca_reports_incident_id_fkey FOREIGN KEY (incident_id) REFERENCES public.incidents(id);
+
+ALTER TABLE ONLY public.rollback_cooldowns
+    ADD CONSTRAINT rollback_cooldowns_deployment_id_fkey FOREIGN KEY (deployment_id) REFERENCES public.deployments(id);

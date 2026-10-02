@@ -1,0 +1,129 @@
+{
+  "drill": "latency",
+  "recorded_at": "2026-09-19T21:28:28+00:00",
+  "cluster": {
+    "mode": "kind",
+    "context": "kind-opsforge",
+    "server_version": "v1.37.0",
+    "namespace": "opsforge"
+  },
+  "spec": {
+    "service_name": "ledger-svc",
+    "fault_type": "LATENCY_INJECTION",
+    "magnitude": 400,
+    "duration_s": 60
+  },
+  "experiment": {
+    "id": "4a716b42-d1b9-43a9-849c-d010c0b2f91b",
+    "service_name": "ledger-svc",
+    "fault_type": "LATENCY_INJECTION",
+    "magnitude": 400.0,
+    "target": "all",
+    "status": "COMPLETED",
+    "injected_at": "2026-09-19T21:27:18.735989",
+    "completed_at": "2026-09-19T21:28:25.353287",
+    "duration_s": 60,
+    "detection_latency_seconds": 5.51,
+    "rollback_latency_seconds": null,
+    "recovery_latency_seconds": 66.62,
+    "detection_bound_s": 90.0,
+    "rollback_bound_s": 90.0,
+    "passed": true,
+    "notes": "PASS: detected in 5.5s (fast burn at 5.5s, signal at 15.7s, consensus at 15.7s)",
+    "deployment_id": null,
+    "affected_pods": [
+      {
+        "pod": "ledger-svc-blue-c84d48944-j8ngh",
+        "color": "blue",
+        "applied": true
+      }
+    ],
+    "timeline": [
+      {
+        "t": 0.0,
+        "at": "2026-09-19T21:27:18.735989",
+        "event": "injected LATENCY_INJECTION (400 ms) into 1 pod(s), target=all"
+      },
+      {
+        "t": 5.5,
+        "at": "2026-09-19T21:27:24.246536",
+        "event": "detected by FAST_BURN alert (1h and 5m windows > 14.4x)"
+      },
+      {
+        "t": 15.7,
+        "at": "2026-09-19T21:27:34.398398",
+        "event": "first signal: 2/3 anomaly layers"
+      },
+      {
+        "t": 15.7,
+        "at": "2026-09-19T21:27:34.398398",
+        "event": "detected by anomaly consensus (2/3 layers agree)"
+      },
+      {
+        "t": 61.5,
+        "at": "2026-09-19T21:28:20.268892",
+        "event": "fault cleared (duration elapsed)"
+      },
+      {
+        "t": 66.6,
+        "at": "2026-09-19T21:28:25.353287",
+        "event": "recovered: service healthy again"
+      },
+      {
+        "t": 66.6,
+        "at": "2026-09-19T21:28:25.353287",
+        "event": "PASS: detected in 5.5s"
+      }
+    ]
+  },
+  "deployment": null,
+  "incidents": [
+    {
+      "id": "184891ab-d0dd-4432-a000-605f9647287d",
+      "service_name": "ledger-svc",
+      "detected_at": "2026-09-19T21:27:24.246536",
+      "resolved_at": null,
+      "status": "OPEN",
+      "severity": "CRITICAL",
+      "trigger_reason": "FAST_BURN 1h/5m at 42.8x/18.8x",
+      "related_deployment_id": null,
+      "is_cascading": false,
+      "root_incident_id": null,
+      "blast_radius_services": [
+        "payments-svc",
+        "checkout-api",
+        "notification-svc"
+      ],
+      "chaos_experiment_id": "4a716b42-d1b9-43a9-849c-d010c0b2f91b"
+    }
+  ],
+  "root_incident_id": "184891ab-d0dd-4432-a000-605f9647287d",
+  "cascade": [
+    "checkout-api",
+    "payments-svc",
+    "notification-svc"
+  ],
+  "rca": {
+    "model": "rule-based-fallback",
+    "told": [
+      {
+        "cause": "Injected fault: chaos drill LATENCY_INJECTION on ledger-svc",
+        "confidence": "high",
+        "evidence": "drill 4a716b42-d1b9-43a9-849c-d010c0b2f91b injected LATENCY_INJECTION (magnitude 400.0, target all) at 2026-09-19T21:27:18.735989"
+      },
+      {
+        "cause": "Latency regression in ledger-svc",
+        "confidence": "low",
+        "evidence": "latency_p95 peaked at 462.7 against a baseline of 60.3413 (z=96.45)"
+      }
+    ],
+    "blind": [
+      {
+        "cause": "Latency regression in ledger-svc",
+        "confidence": "low",
+        "evidence": "latency_p95 peaked at 462.7 against a baseline of 60.3413 (z=96.45)"
+      }
+    ],
+    "blind_top_names_service": true
+  }
+}

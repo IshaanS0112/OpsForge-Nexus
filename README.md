@@ -1,14 +1,15 @@
 # OpsForge Nexus
 
-**Release, reliability & incident intelligence — blue-green deployments with
-health-gated automatic rollback, z-score anomaly detection, and a structured
-root-cause pipeline that collects correlated signals before it ever calls an LLM.**
+**Release, reliability and incident intelligence on a real Kubernetes cluster: canary
+rollouts gated by SLO burn rate, a three-layer anomaly suite that has to agree before it
+acts, dependency-aware cascade detection, chaos drills that measure all of it, and a
+root-cause pipeline that collects structured signals before it ever calls a model.**
 
-FastAPI · React + TypeScript · PostgreSQL · n8n · Docker · Claude · 29 tests
+FastAPI · React 19 + TypeScript · PostgreSQL · kind (Kubernetes 1.37) · n8n · Claude · 136 backend + 8 frontend tests
 
 [![CI](https://github.com/IshaanS0112/OpsForge-Nexus/actions/workflows/ci.yml/badge.svg)](https://github.com/IshaanS0112/OpsForge-Nexus/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org)
 
 ---
 
@@ -16,212 +17,281 @@ FastAPI · React + TypeScript · PostgreSQL · n8n · Docker · Claude · 29 tes
 
 Most "AI incident tooling" I read about works one way: dump the logs into an LLM
 and print whatever comes back. That bothered me, because the useful part of a
-root-cause analysis isn't the prose — it's the correlation done *before* anyone
+root-cause analysis isn't the prose. It's the correlation done *before* anyone
 writes a sentence: which deploy landed just before the error rate moved, which
 error signature dominates, whether the metrics are genuinely anomalous or just
 noisy.
 
 So I built the version where that correlation is real code and the model only
-enters at the end. The blue-green deployment engine, health-gated rollback,
-z-score anomaly detection, and signal collection are ordinary backend
-engineering; the LLM receives an already-assembled, structured incident context
-and ranks causes over it — and if it's unavailable, a rule-based fallback ranks
-the same signals. The infrastructure it runs on is simulated on purpose (there is
-no Kubernetes cluster; traffic switching is a flag flip; health and metric
-samples come from a pluggable simulator) — the detection and rollback logic are
-not. That boundary is spelled out in [What is real vs simulated](#what-is-real-vs-simulated).
+enters at the end. V1 did it for one service on simulated infrastructure. V3
+runs the same idea against a real Kubernetes cluster. It follows a failure
+across services instead of treating each one alone, replaces fixed thresholds
+with the SRE Workbook's burn-rate alerts, and then checks its own claims by
+breaking things on purpose. What is real and what is simulated is spelled out
+[below](#what-is-real-vs-simulated).
 
 ---
 
-## How RCA works — structured signals before the LLM
+## What it does
 
-The RCA engine is signal-driven, not a prompt wrapper. It rests on a strict
-**order of operations**:
+- **Rollouts on a real cluster.** Each of six services runs as blue and green
+  Deployments in a local kind cluster. A rollout applies the new version to the
+  standby colour, watches the real rollout status, then either walks a canary
+  through 5 → 25 → 50 → 100% of traffic or runs a blue-green health gate. It
+  finishes by PATCHing the live Service's selector. Unpullable images and crash
+  loops fail fast.
+- **Canary stages gated by statistics, not a threshold.** Each stage is judged
+  on the canary's own SLI with a sequential probability ratio test: 5% chance of
+  failing a canary that only burns at budget, and two bad requests close together
+  are enough to convict a release that fails 15% of its traffic.
+- **SLO burn-rate alerting.** Multiwindow, multi-burn-rate alerts (14.4× over
+  1 h/5 m, 6× over 6 h/30 m, 1× over 3 d/6 h), straight from Google's SRE
+  Workbook. A FAST_BURN page is the primary post-deploy rollback trigger.
+- **Three detectors that must agree.** Rolling z-score, STL seasonal residual and
+  an unsupervised Isolation Forest judge every service every 5 seconds. Two
+  agreeing layers act; one layer only shows up on the console.
+- **Cascades, not N pages.** A hand-defined dependency graph gives blast radius
+  and root classification. One failing service opens one root incident with its
+  dependents filed under it, and a cascade victim's release is never rolled back.
+- **Chaos drills.** Latency, error bursts and pod kills are injected through the
+  Kubernetes API, and the system measures its own detection, rollback and
+  recovery latency against stated bounds.
+- **Structured RCA.** Deploy history, gate verdicts, z-scored anomalies, error
+  signatures with the upstream signature they came from, cascade context and burn
+  rate are collected first. Then `claude-opus-5` ranks causes with
+  schema-constrained output, or a rule-based fallback ranks the same evidence.
+  A blind mode hides the drill, to test whether RCA finds the fault on evidence
+  alone.
+- **Ops Console.** A dark-first React dashboard centred on a live dependency
+  graph: pulsing nodes, lit cascade edges, a blast-radius view, a canary rail
+  with each stage's SPRT evidence, and incident, deployment and chaos screens.
 
-1. Define a lookback window around the incident.
-2. Collect *structured* signals — recent deployment + config diff, z-scored
-   metric anomalies, top error signatures (deduplicated & counted), and a
-   deployment/anomaly correlation flag.
-3. **Only then** call the LLM with a constrained, JSON-only prompt over that
-   structured context.
-4. Parse and validate the structured JSON response.
+---
 
-If the LLM is unavailable, times out, or returns junk, a **rule-based fallback**
-ranks candidates by deployment proximity, so the system degrades gracefully
-instead of returning nothing. See
-[`backend/app/services/rca_engine.py`](backend/app/services/rca_engine.py).
+## Verified on a real cluster
+
+Recorded on the local kind cluster (Kubernetes v1.37, one node). Every record,
+with its timeline, incidents and both RCA rankings, is in
+[`docs/drills/`](docs/drills/); `python3 scripts/run_drills.py` produces a new set.
+
+| Fault | Service | Verdict | Detected | By | Rolled back | Recovered | Cascade |
+|---|---|---|---|---|---|---|---|
+| Latency +400 ms | ledger-svc | pass | 5.5 s | burn-rate page (consensus at 15.7 s) | — | 66.6 s | payments-svc, checkout-api, notification-svc |
+| Error burst, half of requests | inventory-svc | pass | 13.2 s | detector consensus | — | 69.2 s | checkout-api, notification-svc |
+| Pod kill, every pod | payments-svc | pass | 11.5 s | burn-rate page (consensus at 16.5 s) | — | 62.5 s | checkout-api, notification-svc |
+| Error burst on the canary colour | catalog-svc | pass | 13.7 s | canary burn-rate gate | 13.7 s | 64.9 s | — |
+
+Three things worth reading off that table:
+
+- **The error burst never paged.** Sixty seconds of half-failing requests is about
+  1% of an hour's error budget, so the 1 h burn rate reached 9.96, under the 14.4
+  page threshold. Detector consensus caught it in 13.2 s. That gap is the reason
+  the anomaly suite exists next to the burn-rate alerts, and the reason two of
+  them have to agree before anything automatic happens.
+- **The first pod-kill drill failed**, and the record
+  ([`…-pod-kill.json`](docs/drills/20260919T214511-pod-kill.json)) is kept. Killing
+  the only pod caused no measurable outage at all: those pods still carried a
+  3-second readiness delay from an earlier session instead of the configured 15,
+  so the replacement was Ready before anything could notice. The backend now
+  reconciles Deployments that have drifted from its own settings at startup, and
+  the re-run passed.
+- **Rollouts are checked the same way.** `python3 scripts/kind_smoke.py` — what CI
+  runs on a fresh cluster — ships an unpullable image (rolled back in 21 s, traffic
+  never left the stable colour), a blue-green release (selector switched), and a
+  canary that walked 5 → 25 → 50 → 100% with all four burn-rate gates passing.
 
 ---
 
 ## Architecture
 
 ```
- React dashboard ──► FastAPI backend ──► PostgreSQL
-                       │  Deployment engine (blue-green state machine)
-                       │  Rollback engine (thresholds + anti-flap cooldown)
-                       │  Anomaly detector (z-score)
-                       │  RCA engine (structured signals ──► LLM ──► ranked)
-                       │  Business impact calculator
-                       ▼
-                      n8n  (webhook ──► fetch ──► RCA ──► impact ──► notify ──► store)
-                       ▼
-                    Claude API (constrained RCA prompt)
+ Ops Console (React) ──► FastAPI backend ──────────────────────────► PostgreSQL
+                           │ control loop, every 5 s
+                           │  gateway + open-loop load ──────────► kind cluster
+                           │  anomaly suite ─► consensus            6 services × blue/green
+                           │  burn-rate engine                      live Service per service
+                           │  deployment controller ─► canary / blue-green
+                           │  rollback engine · incidents ─► cascade classification
+                           │  chaos engine
+                           ├─ RCA: structured signals ─► Claude (or rule-based fallback)
+                           ▼
+                          n8n: incident ─► cascade tree ─► RCA ─► impact ─► notify ─► store
 ```
 
-Full detail: [`docs/architecture.md`](docs/architecture.md).
+Everything left of the RCA engine is deterministic code; the model never decides
+anomalies, burn rates or rollbacks. Full detail, including the design decisions
+behind each module: [`docs/architecture.md`](docs/architecture.md).
 
 ---
 
 ## Quickstart
 
-### Option A — Docker Compose (everything)
+### Everything, on a local kind cluster
+
+Needs Docker with about 3 GB of memory free (the kind node uses about 1.5 GB).
 
 ```bash
-cp backend/.env.example backend/.env    # optional: add ANTHROPIC_API_KEY
-docker compose up --build
+docker compose up -d --build
 ```
 
-| Service   | URL                          |
-|-----------|------------------------------|
-| Dashboard | http://localhost:8080        |
-| API docs  | http://localhost:8000/docs   |
-| n8n       | http://localhost:5678        |
+The first run creates the kind cluster, which takes a minute or two. After
+that, `up` reuses the cluster and restarts its node if it was stopped.
 
-Without an `ANTHROPIC_API_KEY`, RCA automatically uses the rule-based fallback —
-the app is fully functional either way.
+For RCA to call the model, give compose a key: either
+`ANTHROPIC_API_KEY=sk-ant-... docker compose up -d`, or a line
+`ANTHROPIC_API_KEY=...` in a `.env` file next to `docker-compose.yml`
+(git-ignored). Without a key, RCA uses its rule-based fallback, and every report
+says which path produced it.
 
-### Option B — Backend only (local dev)
+| Service | URL |
+|---|---|
+| Ops Console | http://localhost:8080 |
+| API docs | http://localhost:8000/docs |
+| Backend metrics (Prometheus) | http://localhost:8000/metrics |
+| n8n | http://localhost:5678 |
+
+The cluster is yours to inspect. `cluster-up.sh` writes a host kubeconfig to
+`.kube/config`, which is git-ignored:
+
+```bash
+kubectl --kubeconfig .kube/config -n opsforge get deploy,svc,pods
+```
+
+The anomaly layers learn a baseline from live traffic first. The z-score and
+Isolation Forest are warm after about five minutes; the seasonal layer needs two
+compressed "days" (10 minutes). The console shows each layer's warm-up. Until two
+layers are warm, burn-rate alerts still page but consensus cannot act.
+
+To stop, run `docker compose down`; the cluster keeps running. To remove the
+cluster too, run `docker rm -f opsforge-control-plane`, or
+`kind delete cluster --name opsforge` if you have kind installed.
+
+### Without Docker (simulated cluster)
+
+The same backend runs against an in-memory cluster with the same interface.
+The console labels which mode is active.
 
 ```bash
 cd backend
 pip install -r requirements.txt
-export DATABASE_URL="sqlite:///opsforge.db"      # or a local Postgres URL
-uvicorn app.main:app --reload
+DATABASE_URL=sqlite:///opsforge.db CLUSTER_MODE=simulated uvicorn app.main:app
 ```
-
-### Frontend dev server
 
 ```bash
 cd frontend
 npm install
-npm run dev        # http://localhost:5173, proxies /api ──► :8000
+npm run dev        # http://localhost:5173, proxies /api to :8000
 ```
+
+Run this way, the backend also reads `backend/.env` (see `backend/.env.example`)
+for settings such as `ANTHROPIC_API_KEY`.
 
 ---
 
-## Try the demo flow
+## Try it
 
-One command runs the whole thing (deploy → fail → rollback → RCA → impact)
-against a running backend:
-
-```bash
-# Terminal 1 — run the backend (HEALTH_CHECK_FAST makes the gate instant for a demo)
-cd backend && HEALTH_CHECK_FAST=1 uvicorn app.main:app
-
-# Terminal 2
-./scripts/demo.sh
-```
-
-Deployment is **asynchronous**: `POST /deployments` returns `202` immediately
-with the record at `IDLE`, and the health gate runs over its polling window in
-the background. Poll `GET /deployments/{id}` for the terminal state:
+The scripts use only the Python standard library.
 
 ```bash
-# 1. Healthy deploy ──► 202, then progresses to LIVE
-DEP=$(curl -s -X POST localhost:8000/deployments \
-  -H 'content-type: application/json' \
-  -d '{"service_name":"checkout","version":"v1.0.0"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')
-curl -s localhost:8000/deployments/$DEP    # -> status: LIVE
-
-# 2. Bad deploy ──► health gate fails ──► auto-rollback ──► incident opened
-curl -X POST localhost:8000/deployments \
-  -H 'content-type: application/json' \
-  -d '{"service_name":"checkout","version":"v2.0.0","simulate_failure":true}'
-
-# 3. Grab the incident id, then run RCA + impact
-curl localhost:8000/incidents
-curl -X POST localhost:8000/incidents/<INCIDENT_ID>/trigger-rca
-curl localhost:8000/incidents/<INCIDENT_ID>/business-impact
+./scripts/demo.sh                        # healthy canary, bad canary, latency drill, RCA, impact
+python3 scripts/run_drills.py            # the drill suite; records land in docs/drills/
+python3 scripts/metric_generator.py --inject   # bring-your-own telemetry through the same suite
+python3 scripts/capture_rca_sample.py    # with a key: shows RCA running on the model, not the fallback
 ```
 
-Drop `HEALTH_CHECK_FAST` to watch the gate poll over the real 60-second window.
-Or drive the anomaly-detector path with the simulated generator:
+Everything the scripts do is also a button in the console: start a rollout on
+the Deployments screen, pick a fault on the Chaos screen, run RCA from an
+incident.
+
+**n8n.** Import [`n8n/workflows/incident-rca-pipeline.json`](n8n/workflows/incident-rca-pipeline.json)
+and activate it. Then start the backend with
+`N8N_WEBHOOK_URL=http://n8n:5678/webhook/opsforge-incident` (in the environment
+or the root `.env`, like the API key), and every new root
+incident runs cascade tree → RCA → business impact → notify → store. Cascading
+incidents are pointed at their root instead of paged, and drill verdicts go
+through the same notifier. The notify nodes are NoOps until you add real
+credentials.
+
+---
+
+## Upgrading from V1
+
+The backend migrates a V1 database in place on startup. It finds the V1 tables
+without migration history, stamps them as the Alembic baseline (`0001`), and
+upgrades to V3 (`0002`). Deployments, incidents, RCA reports and impact rows are
+kept.
+
+Raw metrics and logs follow V3's retention (`DATA_RETENTION_HOURS`, 96 h), so
+V1 telemetry older than that is deleted by the first retention pass. To keep
+it, back it up before the first V3 start:
 
 ```bash
-python scripts/metric_generator.py --service payments --inject
+docker compose up -d postgres
+docker compose exec -T postgres pg_dump -U opsforge opsforge > opsforge-v1.sql
 ```
-
-## Capture a real LLM RCA sample
-
-The RCA engine collects structured signals and then calls a real LLM. To see
-that output for yourself rather than taking the description above on trust:
-
-```bash
-# backend must run WITH a real key so the LLM path (not the fallback) executes
-cd backend && export ANTHROPIC_API_KEY=sk-ant-... && HEALTH_CHECK_FAST=1 uvicorn app.main:app
-
-# then, from the repo root:
-python scripts/capture_rca_sample.py      # writes docs/rca_sample.json
-```
-
-`capture_rca_sample.py` runs a failing deploy, waits for the auto-created
-incident, runs RCA, and writes the ranked candidates to `docs/rca_sample.json`.
-It warns if the rule-based fallback was used (i.e. no key), so any sample it
-produces is either a genuine model run or explicitly flagged as not one.
-
-No sample is committed to this repository — it would embed one account's model
-output as though it were a property of the code, and the point of the script is
-that you can generate it yourself.
 
 ---
 
 ## Tests
 
 ```bash
-cd backend
-pip install -r requirements.txt
-pytest
+cd backend && pip install -r requirements-dev.txt
+ruff check . && pytest          # 136 tests
+
+cd frontend && npm ci
+npm run typecheck && npm test   # 8 tests
 ```
 
-29 tests cover the state machine (legal/illegal transitions, the health gate and
-its real inter-poll timing), rollback triggers + cooldown/anti-flap, z-score +
-streak logic, the RCA fallback and JSON parsing, the impact formula, and the full
-API flow. The same portable ORM runs on SQLite (tests) and PostgreSQL (prod).
+The backend tests drive the control loop on the simulated cluster with a fake
+clock. Covered: rollouts end to end (healthy canary, gate-failed canary,
+blue-green, unpullable image, a canary-targeted drill, post-deploy rollback on
+FAST_BURN plus consensus, a cascade victim left alone), the SPRT gate's
+false-fail rate under continuous monitoring, the Workbook's 52-second FAST_BURN
+detection, each detector's reason to exist (the seasonal layer ignoring a daily
+batch burst that the z-score flags, the Isolation Forest catching a joint drift
+no single metric shows), cascade classification, RCA's signal collection,
+schema-constrained call and every fallback path, and the V1 → V3 migration. The
+demo workload's own HTTP behaviour is tested against a real subprocess.
+
+CI runs lint, the backend tests, the frontend typecheck, tests and build.
 
 ---
 
 ## What is real vs simulated
 
-| Real engineering | Simulated (V1 scope) |
+| Real | Simulated or mocked |
 |---|---|
-| Blue-green **state machine** with enforced transitions | No real K8s / cloud infra |
-| Health-gate logic (success-rate + p95 + 5xx criteria, 3-strike rule) | Health samples from a pluggable simulator |
-| Rollback trigger evaluation + **anti-flap cooldown** | Traffic switch is a flag flip, not a load balancer |
-| **Z-score** anomaly detection over rolling windows | Metrics come from a generator, not real telemetry |
-| **Structured** RCA signal collection before the LLM | Single service, single tenant |
-| Business-impact formula with auditable `calculation_basis` | `revenue_per_request` is a configurable mock |
+| Kubernetes: Deployments, ReplicaSets, Services and pods in a kind cluster, driven through the API server | The cluster is one local node, not a production cluster |
+| Rollouts: server-side apply, rollout status like `kubectl rollout status`, selector switch, scale to zero | The workload is a small demo service, not a real shop |
+| Traffic: real HTTP to every pod, with real latency, timeouts and 5xx | The traffic is synthetic (open-loop Poisson with a daily cycle and a batch burst) |
+| Cascades: pods call their dependencies over cluster DNS, so failures propagate through real calls | The dependency graph is declared, not discovered from traces |
+| Faults: injected into running pods through the pod proxy; pod kills are real deletes | Notifications are NoOp nodes until credentials exist |
+| Detection, burn rates, gates, cascades, rollbacks: deterministic code on measured data | `revenue_per_request` is a configurable mock |
 
-See [Non-goals](docs/architecture.md#non-goals-v1-scope) for the full scope
-boundaries and the V2 roadmap (real K8s, canary %, dependency graph, ML-based
-detection).
+The canary split happens at the application gateway, not in a service mesh. Only
+edge traffic is split; east-west calls follow the live selector until the final
+switch. The anomaly model is unsupervised, so it makes no accuracy claim it
+could not back. Both limits, and the others, are in
+[Scope](docs/architecture.md#scope).
 
 ---
 
 ## Design decisions
 
-The key design decisions and their rationale — mapped to where each lives in
-code — are in [`docs/architecture.md`](docs/architecture.md#design-decisions).
-In short: rollback avoids false positives via sustained-window thresholds and a
-post-rollback cooldown; z-score is chosen over fixed thresholds for per-service
-adaptivity (tradeoff: needs baseline history, weak under seasonality); RCA is
-structured-first with a graceful fallback.
+The rationale for each module is in [`docs/architecture.md`](docs/architecture.md#design-decisions):
+controller-style reconciliation, the gateway-level split, burn rate as the
+rollback signal, a sequential test for canary stages, consensus before
+auto-action, never rolling back a cascade victim, anti-flapping that does not
+mute safety gates, structured RCA, drills that measure the system's claims,
+open-loop load, and scaling to many services.
 
 ---
 
 ## Tech stack
 
-FastAPI · SQLAlchemy · PostgreSQL · React + TypeScript (Vite) · n8n · Claude API
-· Docker Compose.
+FastAPI · SQLAlchemy + Alembic · PostgreSQL · kind + the Kubernetes Python client ·
+NumPy, statsmodels (STL), scikit-learn (Isolation Forest) · React 19, TypeScript,
+Vite, Tailwind 4 · n8n · Claude API · Docker Compose.
 
 ## License
 

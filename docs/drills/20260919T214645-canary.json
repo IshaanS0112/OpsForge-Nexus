@@ -1,0 +1,218 @@
+{
+  "drill": "canary",
+  "recorded_at": "2026-09-19T21:46:45+00:00",
+  "cluster": {
+    "mode": "kind",
+    "context": "kind-opsforge",
+    "server_version": "v1.37.0",
+    "namespace": "opsforge"
+  },
+  "spec": {
+    "service_name": "catalog-svc",
+    "fault_type": "ERROR_BURST",
+    "magnitude": 0.5,
+    "target": "canary",
+    "duration_s": 60
+  },
+  "experiment": {
+    "id": "e3836c24-742f-4ff7-9888-ba4ceacc5d03",
+    "service_name": "catalog-svc",
+    "fault_type": "ERROR_BURST",
+    "magnitude": 0.5,
+    "target": "canary",
+    "status": "COMPLETED",
+    "injected_at": "2026-09-19T21:45:39.477555",
+    "completed_at": "2026-09-19T21:46:44.349034",
+    "duration_s": 60,
+    "detection_latency_seconds": 13.65,
+    "rollback_latency_seconds": 13.65,
+    "recovery_latency_seconds": 64.87,
+    "detection_bound_s": 90.0,
+    "rollback_bound_s": 90.0,
+    "passed": true,
+    "notes": "PASS: detected in 13.7s, rolled back in 13.7s (gate at 13.7s, signal at 34.3s)",
+    "deployment_id": "8ed04833-a289-4c1e-a03e-f13ba585e84f",
+    "affected_pods": [
+      {
+        "pod": "catalog-svc-green-84cd6c9cc8-2b47n",
+        "color": "green",
+        "applied": true
+      }
+    ],
+    "timeline": [
+      {
+        "t": 0.0,
+        "at": "2026-09-19T21:45:39.477555",
+        "event": "injected ERROR_BURST (0.5 fraction of requests) into 1 pod(s), target=canary"
+      },
+      {
+        "t": 13.7,
+        "at": "2026-09-19T21:45:53.131038",
+        "event": "detected by canary burn-rate gate"
+      },
+      {
+        "t": 13.7,
+        "at": "2026-09-19T21:45:53.131038",
+        "event": "rollback complete: traffic on blue; green scaled to 0"
+      },
+      {
+        "t": 34.3,
+        "at": "2026-09-19T21:46:13.797339",
+        "event": "first signal: 1/3 anomaly layers"
+      },
+      {
+        "t": 64.9,
+        "at": "2026-09-19T21:46:44.349034",
+        "event": "fault cleared (duration elapsed)"
+      },
+      {
+        "t": 64.9,
+        "at": "2026-09-19T21:46:44.349034",
+        "event": "recovered: service healthy again"
+      },
+      {
+        "t": 64.9,
+        "at": "2026-09-19T21:46:44.349034",
+        "event": "PASS: detected in 13.7s, rolled back in 13.7s"
+      }
+    ]
+  },
+  "deployment": {
+    "id": "8ed04833-a289-4c1e-a03e-f13ba585e84f",
+    "service_name": "catalog-svc",
+    "version": "v1.9.1789854311",
+    "status": "ROLLED_BACK",
+    "strategy": "CANARY",
+    "config_diff": null,
+    "previous_version_id": null,
+    "deployed_at": "2026-09-19T21:45:11.303066",
+    "switched_at": null,
+    "finished_at": "2026-09-19T21:45:53.131038",
+    "k8s_namespace": "opsforge",
+    "k8s_deployment_name": "catalog-svc-green",
+    "image": null,
+    "target_color": "green",
+    "stable_color": "blue",
+    "auto_promote": true,
+    "stage_started_at": "2026-09-19T21:45:36.763425",
+    "status_reason": "traffic on blue; green scaled to 0",
+    "stage_history": [
+      {
+        "at": "2026-09-19T21:45:11.303066",
+        "stage": "IDLE",
+        "reason": "created"
+      },
+      {
+        "at": "2026-09-19T21:45:11.310736",
+        "stage": "PREPARING_GREEN",
+        "reason": "applying v1.9.1789854311 to catalog-svc-green"
+      },
+      {
+        "at": "2026-09-19T21:45:11.310736",
+        "stage": "DEPLOYING_GREEN",
+        "reason": "waiting for the new ReplicaSet to become ready"
+      },
+      {
+        "at": "2026-09-19T21:45:31.641332",
+        "stage": "HEALTH_CHECKING",
+        "reason": "rollout complete: 1/1 replicas available"
+      },
+      {
+        "at": "2026-09-19T21:45:36.763425",
+        "stage": "CANARY_5",
+        "reason": "health gate passed; 5% of edge traffic to green"
+      },
+      {
+        "at": "2026-09-19T21:45:53.131038",
+        "gate": {
+          "reason": "canary burning at 500.0x: SPRT evidence 10.61 crossed 2.94 for 'burning at 14.4x' over 'at budget' (4/8 bad)",
+          "verdict": "FAIL",
+          "sprt_llr": 10.615,
+          "window_s": 45.0,
+          "elapsed_s": 16.4,
+          "threshold": 14.4,
+          "canary_bad": 4,
+          "stable_bad": 0,
+          "canary_burn": 499.99999999999955,
+          "stable_burn": 0.0,
+          "min_requests": 20,
+          "sprt_fail_at": 2.944,
+          "canary_requests": 8,
+          "stable_requests": 237
+        },
+        "stage": "ROLLING_BACK",
+        "reason": "canary gate failed: canary burning at 500.0x: SPRT evidence 10.61 crossed 2.94 for 'burning at 14.4x' over 'at budget' (4/8 bad)"
+      },
+      {
+        "at": "2026-09-19T21:45:53.131038",
+        "stage": "ROLLED_BACK",
+        "reason": "traffic on blue; green scaled to 0"
+      }
+    ],
+    "canary_weight": 0
+  },
+  "incidents": [
+    {
+      "id": "7327f9d2-73c3-4776-9cba-da37e018700c",
+      "service_name": "catalog-svc",
+      "detected_at": "2026-09-19T21:45:53.131038",
+      "resolved_at": null,
+      "status": "OPEN",
+      "severity": "HIGH",
+      "trigger_reason": "Rollback of v1.9.1789854311: canary gate failed: canary burning at 500.0x: SPRT evidence 10.61 crossed 2.94 for 'burning at 14.4x' over 'at budget' (4/8 bad)",
+      "related_deployment_id": "8ed04833-a289-4c1e-a03e-f13ba585e84f",
+      "is_cascading": false,
+      "root_incident_id": null,
+      "blast_radius_services": [
+        "inventory-svc",
+        "checkout-api",
+        "notification-svc"
+      ],
+      "chaos_experiment_id": "e3836c24-742f-4ff7-9888-ba4ceacc5d03"
+    }
+  ],
+  "root_incident_id": "7327f9d2-73c3-4776-9cba-da37e018700c",
+  "cascade": [
+    "checkout-api",
+    "inventory-svc",
+    "notification-svc"
+  ],
+  "rca": {
+    "model": "rule-based-fallback",
+    "told": [
+      {
+        "cause": "Injected fault: chaos drill ERROR_BURST on catalog-svc",
+        "confidence": "high",
+        "evidence": "drill e3836c24-742f-4ff7-9888-ba4ceacc5d03 injected ERROR_BURST (magnitude 0.5, target canary) at 2026-09-19T21:45:39.477555"
+      },
+      {
+        "cause": "Release v1.9.1789854311 (CANARY) failed its rollout gates",
+        "confidence": "high",
+        "evidence": "canary gate failed: canary burning at 500.0x: SPRT evidence 10.61 crossed 2.94 for 'burning at 14.4x' over 'at budget' (4/8 bad)"
+      },
+      {
+        "cause": "Error-rate regression in catalog-svc",
+        "confidence": "low",
+        "evidence": "error_rate peaked at 0.05556 against a baseline of 0.0 (z=5.56); 1/3 detector layers agreed"
+      }
+    ],
+    "blind": [
+      {
+        "cause": "Release v1.9.1789854311 (CANARY) failed its rollout gates",
+        "confidence": "high",
+        "evidence": "canary gate failed: canary burning at 500.0x: SPRT evidence 10.61 crossed 2.94 for 'burning at 14.4x' over 'at budget' (4/8 bad)"
+      },
+      {
+        "cause": "Error-rate regression in catalog-svc",
+        "confidence": "low",
+        "evidence": "error_rate peaked at 0.05556 against a baseline of 0.0 (z=5.56); 1/3 detector layers agreed"
+      },
+      {
+        "cause": "Elevated errors: InternalError:catalog-svc@v1.9.1789854311",
+        "confidence": "medium",
+        "evidence": "4 occurrences in lookback window"
+      }
+    ],
+    "blind_top_names_service": false
+  }
+}

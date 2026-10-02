@@ -1,0 +1,69 @@
+{
+  "drill": "pod-kill",
+  "recorded_at": "2026-09-19T21:45:11+00:00",
+  "cluster": {
+    "mode": "kind",
+    "context": "kind-opsforge",
+    "server_version": "v1.37.0",
+    "namespace": "opsforge"
+  },
+  "spec": {
+    "service_name": "payments-svc",
+    "fault_type": "POD_KILL",
+    "magnitude": 1.0,
+    "duration_s": 60
+  },
+  "experiment": {
+    "id": "a6fdf5be-826a-4fb8-ad86-6b5ee336deb9",
+    "service_name": "payments-svc",
+    "fault_type": "POD_KILL",
+    "magnitude": 1.0,
+    "target": "all",
+    "status": "COMPLETED",
+    "injected_at": "2026-09-19T21:44:07.975513",
+    "completed_at": "2026-09-19T21:45:09.343526",
+    "duration_s": 60,
+    "detection_latency_seconds": null,
+    "rollback_latency_seconds": null,
+    "recovery_latency_seconds": 61.37,
+    "detection_bound_s": 90.0,
+    "rollback_bound_s": 90.0,
+    "passed": false,
+    "notes": "FAIL: not detected within 90s",
+    "deployment_id": null,
+    "affected_pods": [
+      {
+        "pod": "payments-svc-blue-5564b7f4cf-qxtrz",
+        "color": "blue",
+        "applied": true
+      }
+    ],
+    "timeline": [
+      {
+        "t": 0.0,
+        "at": "2026-09-19T21:44:07.975513",
+        "event": "injected POD_KILL (1 fraction of pods) into 1 pod(s), target=all"
+      },
+      {
+        "t": 61.4,
+        "at": "2026-09-19T21:45:09.343526",
+        "event": "fault cleared (duration elapsed)"
+      },
+      {
+        "t": 61.4,
+        "at": "2026-09-19T21:45:09.343526",
+        "event": "recovered: service healthy again"
+      },
+      {
+        "t": 61.4,
+        "at": "2026-09-19T21:45:09.343526",
+        "event": "FAIL: not detected within 90s"
+      }
+    ]
+  },
+  "deployment": null,
+  "incidents": [],
+  "root_incident_id": null,
+  "cascade": [],
+  "rca": null
+}
