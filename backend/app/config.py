@@ -13,15 +13,13 @@ class Settings(BaseSettings):
     # --- LLM (Claude) ---
     anthropic_api_key: str = ""
     llm_model: str = "claude-opus-5"
-    # The model thinks before answering (adaptive thinking is on by default),
-    # so allow for more than a bare completion takes.
+    # The model thinks before answering, so allow more than a bare completion.
     llm_timeout_seconds: float = 60.0
     llm_effort: str = "high"  # low | medium | high | xhigh | max
 
     # --- Cluster ---
-    # "kind": real Kubernetes API calls against the local kind cluster.
-    # "simulated": in-memory stand-in with the same interface, for tests and
-    # for running without Docker. The dashboard labels which one is active.
+    # "kind": real API calls against the local cluster. "simulated": in-memory
+    # stand-in with the same interface. The dashboard labels which is active.
     cluster_mode: str = "simulated"
     kubeconfig: str = ""  # empty = default kubeconfig resolution
     k8s_context: str = ""
@@ -105,9 +103,8 @@ class Settings(BaseSettings):
 
     # --- Incidents / cascade ---
     cascade_window_min: float = 5.0
-    # How far a dependent's incident may *lead* its upstream root. A fault is
-    # detected within the detection bound of its onset and a dependent cannot
-    # degrade before its upstream does, so the lead is bounded by that bound.
+    # How far a dependent's incident may lead its upstream root: an effect
+    # cannot precede its cause by more than detection itself takes.
     cascade_skew_s: float = 90.0
     incident_resolve_after_s: float = 60.0  # quiet this long -> auto-resolve
     data_retention_hours: float = 96.0

@@ -70,13 +70,13 @@ def db():
 
 @pytest.fixture(autouse=True)
 def _reset_singletons():
-    """Clear in-memory state on the shared engines between tests."""
-    from app.services import anomaly_service, rollback_engine
+    """Clear in-memory state on the shared engines between tests. The rollback
+    cooldown is not here any more: it lives in the database, which each test
+    creates from scratch."""
+    from app.services import anomaly_service
 
-    rollback_engine._cooldown_until.clear()
     anomaly_service.streak._counts.clear()
     yield
-    rollback_engine._cooldown_until.clear()
     anomaly_service.streak._counts.clear()
 
 
@@ -99,7 +99,6 @@ def runtime(db, clock):
     from app.services.sim_cluster import SimulatedCluster
 
     clock_module.set_source(lambda: clock.now)
-    rollback_engine._clock = clock
     cluster = SimulatedCluster(clock=clock, startup_delay_s=10.0, replicas=1)
     rt = Runtime(cluster, rollback=rollback_engine, loadgen=False, notifier=N8nNotifier(url=""))
     rt.suite = AnomalySuite(
@@ -110,10 +109,7 @@ def runtime(db, clock):
     rt.tick(clock.now)  # bootstrap: topology, seeds, routing
     yield rt
     set_runtime(None)
-    import time
-
     clock_module.set_source(None)
-    rollback_engine._clock = time.monotonic
 
 
 @pytest.fixture()

@@ -270,9 +270,8 @@ class Handler(BaseHTTPRequestHandler):
         extra_ms = RELEASE_LATENCY_MS + faults.get("latency", 0.0)
         if extra_ms > 0:
             time.sleep(extra_ms / 1000)
-        # A bad release and an injected burst fail the same way and log the
-        # same signature: the handler cannot tell why it failed, and neither
-        # can anything reading its logs. Telling them apart is RCA's job.
+        # A bad release and an injected burst log the same signature: the
+        # handler cannot tell them apart, so neither can its logs.
         release_failed = RELEASE_ERROR_RATE > 0 and random.random() < RELEASE_ERROR_RATE
         if release_failed or random.random() < faults.get("error", 0.0):
             return 500, {"error_signature": f"InternalError:{SERVICE}@{VERSION}"}

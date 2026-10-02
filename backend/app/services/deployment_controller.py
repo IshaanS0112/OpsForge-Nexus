@@ -38,7 +38,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import catalog
+from app import catalog, observability
 from app.config import settings
 from app.k8s import manifests as m
 from app.models import Deployment
@@ -63,10 +63,8 @@ from app.services.rollback_engine import RollbackDecision, RollbackEngine, Rollb
 logger = logging.getLogger(__name__)
 
 # simulate_failure ships the candidate with a bad config: this share of its
-# requests return 500. The detection path never sees this flag, only traffic.
-# 15% is a subtle regression: it usually passes a canary's pre-traffic smoke
-# check and has to be caught by the burn-rate gates (a blue-green rollout's
-# full health gate rejects it).
+# requests return 500, and detection only ever sees the resulting traffic.
+# 15% is subtle enough to pass the canary smoke check and reach the gates.
 SIMULATED_FAILURE_ERROR_RATE = 0.15
 
 
@@ -296,6 +294,8 @@ class DeploymentController:
             entry["gate"] = gate
         dep.stage_history = [*(dep.stage_history or []), entry]
         db.commit()
+        if to in (DeployState.LIVE, DeployState.ROLLED_BACK):
+            observability.ROLLOUTS_FINISHED.labels(strategy=dep.strategy, status=to.value).inc()
 
     def _prepare(self, db: Session, dep: Deployment, now: datetime) -> None:
         if dep.status == DeployState.IDLE.value:
@@ -457,8 +457,11 @@ class DeploymentController:
             context=context,
             release_specific=self._release_specific(db, dep, now, decision, gate),
         )
+        observability.ROLLBACKS.labels(trigger=decision.trigger.value if decision.trigger else "unknown").inc()
         if decision.trigger != RollbackTrigger.MANUAL:
-            self.rollback_engine.start_cooldown(dep.service_name)
+            self.rollback_engine.start_cooldown(
+                db, dep.service_name, now, trigger=decision.trigger, deployment_id=dep.id
+            )
         try:
             self._complete_rollback(db, dep, now)
         except Exception as exc:  # noqa: BLE001 — ROLLING_BACK is retried next tick

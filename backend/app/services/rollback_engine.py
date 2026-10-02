@@ -30,12 +30,15 @@ shared across workers.
 from __future__ import annotations
 
 import logging
-import time
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Optional
 
+from sqlalchemy.orm import Session
+
 from app.config import settings
+from app.models import RollbackCooldown
 
 logger = logging.getLogger(__name__)
 
@@ -60,23 +63,41 @@ class RollbackDecision:
 
 
 class RollbackEngine:
-    """Evaluates rollback conditions and enforces a per-service cooldown."""
+    """Decides rollbacks and keeps the anti-flapping cooldown.
 
-    def __init__(self, clock=time.monotonic) -> None:
-        self._clock = clock
-        self._cooldown_until: dict[str, float] = {}
+    ``evaluate`` is a pure function of what the caller passes it, including
+    whether the service is cooling down, so the decision is unit-testable
+    without a database. The cooldown itself is a row in ``rollback_cooldowns``
+    (V1 kept it in a process dictionary, which every restart forgot and no
+    second worker could see)."""
 
     # ---- cooldown / anti-flapping ----
-    def in_cooldown(self, service: str) -> bool:
-        until = self._cooldown_until.get(service, 0.0)
-        return self._clock() < until
+    def cooldown_remaining(self, db: Session, service: str, now: datetime) -> float:
+        row = db.get(RollbackCooldown, service)
+        return max(0.0, (row.until_at - now).total_seconds()) if row is not None else 0.0
 
-    def cooldown_remaining(self, service: str) -> float:
-        return max(0.0, self._cooldown_until.get(service, 0.0) - self._clock())
+    def in_cooldown(self, db: Session, service: str, now: datetime) -> bool:
+        return self.cooldown_remaining(db, service, now) > 0.0
 
-    def start_cooldown(self, service: str) -> None:
-        self._cooldown_until[service] = self._clock() + settings.rollback_cooldown_s
-        logger.info("Cooldown started for %s (%ss)", service, settings.rollback_cooldown_s)
+    def start_cooldown(
+        self,
+        db: Session,
+        service: str,
+        now: datetime,
+        *,
+        trigger: Optional[RollbackTrigger] = None,
+        deployment_id: Optional[str] = None,
+    ) -> None:
+        row = db.get(RollbackCooldown, service)
+        if row is None:
+            row = RollbackCooldown(service_name=service)
+            db.add(row)
+        row.started_at = now
+        row.until_at = now + timedelta(seconds=settings.rollback_cooldown_s)
+        row.trigger = trigger.value if trigger else None
+        row.deployment_id = deployment_id
+        db.commit()
+        logger.info("cooldown started for %s (%ss)", service, settings.rollback_cooldown_s)
 
     # ---- trigger evaluation ----
     def evaluate(
@@ -90,10 +111,12 @@ class RollbackEngine:
         burn_rate: Optional[float] = None,
         consensus_layers: int = 0,
         cascade_root: Optional[str] = None,
+        in_cooldown: bool = False,
         manual: bool = False,
     ) -> RollbackDecision:
         """Return a decision. Manual and rollout-safety triggers always act;
-        the metric trigger is suppressed while the service cools down."""
+        the metric trigger is suppressed while the service cools down
+        (``in_cooldown``, which the caller reads from the database)."""
         if manual:
             return RollbackDecision(True, RollbackTrigger.MANUAL, "Manual rollback initiated by user")
 
@@ -115,8 +138,8 @@ class RollbackEngine:
 
         if burn_severity != "FAST_BURN":
             return RollbackDecision(False, None, "no rollback condition met")
-        if self.in_cooldown(service):
-            logger.info("Auto-rollback suppressed for %s: in cooldown", service)
+        if in_cooldown:
+            logger.info("auto-rollback suppressed for %s: in cooldown", service)
             return RollbackDecision(False, None, "suppressed: cooldown active")
         if cascade_root and cascade_root != service:
             return RollbackDecision(

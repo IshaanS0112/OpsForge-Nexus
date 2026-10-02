@@ -38,6 +38,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import observability
 from app.config import settings
 from app.models import Incident
 from app.services.dependency_graph import DependencyGraph
@@ -154,6 +155,9 @@ class IncidentService:
         self.classify_cascades(db, graph, now)
         db.commit()
         db.refresh(inc)
+        observability.INCIDENTS_OPENED.labels(
+            severity=inc.severity or "UNKNOWN", cascading=str(bool(inc.is_cascading)).lower()
+        ).inc()
         self.notifier.incident_opened(inc)
         logger.info(
             "incident %s opened for %s (%s)%s",
@@ -199,9 +203,8 @@ class IncidentService:
             )
             inc.is_cascading = True
             inc.root_incident_id = by_service[root_service].id
-        # A dependent can be explained only by a service that is itself
-        # cascading from an older root; point it at the ultimate root so each
-        # failure has one tree. The graph is acyclic, so chains terminate.
+        # Point each dependent at the ultimate root, so one failure is one
+        # tree. The graph is acyclic, so the walk terminates.
         for inc in recent:
             root = by_id.get(inc.root_incident_id) if inc.is_cascading else None
             while root is not None and root.is_cascading and root.root_incident_id in by_id:

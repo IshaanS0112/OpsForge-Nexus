@@ -5,7 +5,8 @@ PostgreSQL and to ``CHAR(36)``/``JSON`` on SQLite (used by the test suite),
 so the same models power both prod and tests without schema drift.
 
 Schema changes ship as Alembic migrations (``backend/migrations``); the V3
-delta on top of the V1 tables is revision ``0002``.
+delta on top of the V1 tables is revision ``0002``, and ``0003`` moves the
+rollback cooldown out of process memory.
 """
 
 import uuid
@@ -68,8 +69,7 @@ class Deployment(Base):
     id = Column(GUID(), primary_key=True, default=_uuid)
     service_name = Column(String(100), nullable=False)
     version = Column(String(50), nullable=False)
-    # IDLE, PREPARING_GREEN, DEPLOYING_GREEN, HEALTH_CHECKING,
-    # CANARY_5, CANARY_25, CANARY_50, CANARY_100,
+    # IDLE, PREPARING_GREEN, DEPLOYING_GREEN, HEALTH_CHECKING, CANARY_5..100,
     # TRAFFIC_SWITCHING, LIVE, ROLLING_BACK, ROLLED_BACK
     status = Column(String(30), nullable=False, default="IDLE")
     config_diff = Column(JSONType)
@@ -208,6 +208,23 @@ class SLOConfig(Base):
     window_days = Column(Integer, nullable=False, default=30)
     # A request is "good" if it is not a 5xx AND it completes under this bound.
     latency_threshold_ms = Column(Float, nullable=False, default=300.0)
+
+
+class RollbackCooldown(Base):
+    """Anti-flapping state: metric-triggered rollbacks for a service are
+    suppressed until ``until_at``.
+
+    It lives in the database rather than in a process dictionary (V1), so a
+    backend restart cannot forget it and every worker sees the same window.
+    One row per service; a new rollback overwrites it."""
+
+    __tablename__ = "rollback_cooldowns"
+
+    service_name = Column(String(100), primary_key=True)
+    started_at = Column(DateTime, nullable=False, default=utcnow)
+    until_at = Column(DateTime, nullable=False)
+    trigger = Column(String(40))
+    deployment_id = Column(GUID, ForeignKey("deployments.id"))
 
 
 class SLISample(Base):

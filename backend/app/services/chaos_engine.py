@@ -49,7 +49,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import catalog
+from app import catalog, observability
 from app.config import settings
 from app.models import ChaosExperiment, Deployment, Incident
 from app.services.deployment_engine import CANARY_STATES, DeployState
@@ -314,6 +314,7 @@ class ChaosEngine:
                 exp.rollback_bound_s,
             )
             exp.passed = passed
+            observability.DRILLS.labels(fault_type=exp.fault_type, verdict="pass" if passed else "fail").inc()
             mechanisms = ", ".join(
                 f"{k.replace('_', ' ')} at {v:.1f}s" for k, v in sorted(seen.items(), key=lambda kv: kv[1])
             )

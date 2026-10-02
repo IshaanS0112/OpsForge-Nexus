@@ -76,6 +76,24 @@ def test_seasonal_layer_expects_the_recurring_batch_job_that_fools_plain_zscore(
     assert s_res.flagged and rz["latency_p95"] > 3
 
 
+def test_seasonal_layer_never_flags_a_zero_reading_after_a_past_spike():
+    # A burst leaves a negative swing in the fitted season. A healthy service
+    # reporting 0.0 errors must not read as "worse than expected".
+    layer = SeasonalLayer(period_s=PERIOD_S, bucket_s=TICK_S, min_periods=2, refit_every_s=TICK_S)
+    t = T0
+    for _ in range(int(3 * PERIOD_S / TICK_S)):
+        one_off = 0.5 if 2 * PERIOD_S <= t - T0 < 2 * PERIOD_S + 60 else 0.0  # a drill, once
+        layer.observe("s", {"error_rate": one_off}, t)
+        t += TICK_S
+    flags = []
+    for _ in range(int(PERIOD_S / TICK_S)):  # a clean cycle: no errors at all
+        res, rz = layer.observe("s", {"error_rate": 0.0}, t)
+        flags.append(res.flagged)
+        assert (rz["error_rate"] or 0) <= 0  # zero can only be at or below expectation
+        t += TICK_S
+    assert not any(flags)
+
+
 def test_seasonal_layer_warms_up_honestly():
     layer = SeasonalLayer(period_s=PERIOD_S, bucket_s=TICK_S, min_periods=2)
     res, rz = layer.observe("s", {"latency_p95": 100.0}, T0)

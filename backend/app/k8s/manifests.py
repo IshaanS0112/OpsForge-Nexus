@@ -26,6 +26,7 @@ from pathlib import Path
 from app.catalog import ServiceSpec
 
 COLORS = ("blue", "green")
+CONTAINER_NAME = "app"
 CONTAINER_PORT = 8080
 NODE_PORT_BASE = 30100
 CODE_CONFIGMAP = "opsforge-demo-service"
@@ -85,12 +86,24 @@ def code_hash(source: str | None = None) -> str:
     return hashlib.sha256((source if source is not None else demo_service_source()).encode()).hexdigest()[:16]
 
 
-def stale_code_patch(template_annotations: dict | None, current: str) -> dict | None:
-    """The pod-template patch that rolls a Deployment still running older
-    workload code (what ``kubectl rollout restart`` does), or None."""
-    if (template_annotations or {}).get(CODE_HASH_ANNOTATION) == current:
-        return None
-    return {"spec": {"template": {"metadata": {"annotations": {CODE_HASH_ANNOTATION: current}}}}}
+def drift_patch(annotations: dict | None, env: dict[str, str], code: str, defaults: dict[str, str]) -> dict | None:
+    """The pod-template patch that brings an existing Deployment back in line
+    with this backend: the workload code the ConfigMap now ships, and the
+    operational env defaults from settings. None when it already matches.
+
+    A release's own config (a version's ``config_diff``) is left alone: the
+    container's env list merges by name, so only the drifting keys are set.
+    Applying it rolls the pods, which is what picking up new code or a new
+    readiness delay requires."""
+    template: dict = {}
+    if (annotations or {}).get(CODE_HASH_ANNOTATION) != code:
+        template["metadata"] = {"annotations": {CODE_HASH_ANNOTATION: code}}
+    drift = {k: v for k, v in defaults.items() if env.get(k) != v}
+    if drift:
+        template["spec"] = {
+            "containers": [{"name": CONTAINER_NAME, "env": [{"name": k, "value": v} for k, v in sorted(drift.items())]}]
+        }
+    return {"spec": {"template": template}} if template else None
 
 
 def selector(service: str, color: str) -> dict[str, str]:
@@ -181,7 +194,7 @@ def deployment_manifest(
                     "terminationGracePeriodSeconds": 5,
                     "containers": [
                         {
-                            "name": "app",
+                            "name": CONTAINER_NAME,
                             "image": image,
                             "imagePullPolicy": "IfNotPresent",
                             "command": ["python", f"{CODE_MOUNT}/app.py"],

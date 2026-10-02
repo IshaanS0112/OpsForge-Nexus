@@ -298,22 +298,25 @@ class KubernetesCluster:
     def ensure_service(self, spec: ServiceSpec) -> None:
         """Create any missing objects for one service. Existing objects keep
         their live colour and deployed versions; the only change made to them
-        is a rolling restart when their pods run older workload code than the
-        ConfigMap now ships, so a colour never mixes two versions of it."""
+        is a rolling restart when they have drifted from this backend — older
+        workload code than the ConfigMap now ships, or stale operational
+        settings such as the readiness warm-up."""
         for variant in ("live", *m.COLORS):
             name = spec.name if variant == "live" else m.deployment_name(spec.name, variant)
             if not self._exists(self.core.read_namespaced_service, name, self.namespace):
                 self.core.create_namespaced_service(self.namespace, m.service_manifest(self.namespace, spec, variant))
                 logger.info("created service %s", name)
-        current = m.code_hash()
+        code, defaults = m.code_hash(), env_defaults()
         for color in m.COLORS:
             name = m.deployment_name(spec.name, color)
             existing = self._read(self.apps.read_namespaced_deployment, name, self.namespace)
             if existing is not None:
-                patch = m.stale_code_patch(existing.spec.template.metadata.annotations, current)
+                template = existing.spec.template
+                env = {e.name: e.value for e in (template.spec.containers[0].env or [])}
+                patch = m.drift_patch(template.metadata.annotations, env, code, defaults)
                 if patch is not None:
                     self.apps.patch_namespaced_deployment(name, self.namespace, patch, field_manager=FIELD_MANAGER)
-                    logger.info("rolling %s onto workload code %s", name, current)
+                    logger.info("rolling %s: it had drifted from this backend's code or settings", name)
                 continue
             body = m.deployment_manifest(
                 self.namespace,

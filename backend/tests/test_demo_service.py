@@ -89,13 +89,24 @@ def test_work_calls_dependency(pair):
     assert body["calls"][0]["ok"] is True
 
 
-def test_readiness_waits_for_startup_delay(pair):
-    _, payments = pair
-    code, _ = _get(f"{payments}/readyz")
-    assert code == 503  # STARTUP_DELAY_S=1 not elapsed yet
-    time.sleep(1.1)
-    code, _ = _get(f"{payments}/readyz")
-    assert code == 200
+def test_readiness_waits_for_startup_delay():
+    # Its own process, with a delay wide enough that a loaded machine cannot
+    # make the first probe land after the warm-up has already finished.
+    delay_s = 3.0
+    port = _free_port()
+    proc = _start({"SERVICE_NAME": "warmup-svc", "PORT": str(port), "STARTUP_DELAY_S": str(delay_s)})
+    try:
+        started = time.monotonic()
+        assert _get(f"http://127.0.0.1:{port}/readyz")[0] == 503
+        assert _get(f"http://127.0.0.1:{port}/healthz")[0] == 200  # live before it is ready
+
+        while _get(f"http://127.0.0.1:{port}/readyz")[0] != 200:
+            assert time.monotonic() - started < delay_s + 5, "never became ready"
+            time.sleep(0.1)
+        assert time.monotonic() - started >= delay_s - 0.5
+    finally:
+        proc.kill()
+        proc.wait()
 
 
 def test_error_fault_cascades_with_root_cause(pair):

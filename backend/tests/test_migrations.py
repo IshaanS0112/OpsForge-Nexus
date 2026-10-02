@@ -2,9 +2,14 @@
 describe, and a V1 database upgrades in place without losing rows."""
 
 from alembic import command
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 
 from app.db import session as db_session
+
+
+def _head_revision() -> str:
+    return ScriptDirectory.from_config(db_session._alembic_config()).get_current_head()
 
 
 def _file_engine(tmp_path, name="db.sqlite"):
@@ -53,7 +58,7 @@ def test_v1_database_upgrades_in_place(tmp_path, monkeypatch):
         row = conn.execute(text("SELECT version, status, strategy FROM deployments")).one()
         rev = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
     assert tuple(row) == ("v1.0.0", "LIVE", "BLUE_GREEN")  # V1 rows were blue-green
-    assert rev == "0002"
+    assert rev == _head_revision()
 
 
 def test_init_db_is_idempotent(tmp_path, monkeypatch):
@@ -62,7 +67,7 @@ def test_init_db_is_idempotent(tmp_path, monkeypatch):
     db_session.init_db()
     db_session.init_db()  # second boot: nothing to do, must not raise
     with engine.connect() as conn:
-        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0002"
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == _head_revision()
 
 
 def test_downgrade_returns_to_v1_shape(tmp_path):

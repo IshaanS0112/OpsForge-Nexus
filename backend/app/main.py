@@ -1,11 +1,13 @@
 """OpsForge Nexus — FastAPI entrypoint."""
 
 import logging
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
+from app import observability
 from app.config import settings
 from app.db.session import init_db
 from app.routers import chaos, console, deployments, incidents, metrics, services, webhooks
@@ -54,7 +56,29 @@ app.add_middleware(
 for r in (deployments, incidents, metrics, services, chaos, console, webhooks):
     app.include_router(r.router)
 
+observability.register_runtime_collector(get_runtime)
+
+
+@app.middleware("http")
+async def record_request_metrics(request: Request, call_next):
+    started = time.perf_counter()
+    response = await call_next(request)
+    # The route template, not the URL: /incidents/{incident_id} is one series,
+    # while one series per incident id would be unbounded.
+    route = request.scope.get("route")
+    label = getattr(route, "path", "unmatched")
+    observability.HTTP_REQUESTS.labels(method=request.method, route=label, status=response.status_code).inc()
+    observability.HTTP_SECONDS.labels(method=request.method, route=label).observe(time.perf_counter() - started)
+    return response
+
 
 @app.get("/health", tags=["meta"])
 def health() -> dict:
     return {"status": "ok", "service": "opsforge-nexus", "version": app.version}
+
+
+@app.get("/metrics", tags=["meta"], response_class=Response)
+def metrics_exposition() -> Response:
+    """Prometheus exposition for the backend itself: control-loop timing, what
+    it decided, and the API's own request counters."""
+    return Response(observability.exposition(), media_type=observability.CONTENT_TYPE)

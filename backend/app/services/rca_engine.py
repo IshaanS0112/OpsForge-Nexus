@@ -31,6 +31,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app import observability
 from app.config import settings
 from app.models import AnomalyConsensus, ChaosExperiment, Deployment, Incident, Log, RCAReport
 from app.services.anomaly_detector import AnomalyDetectorService
@@ -422,6 +423,7 @@ class RCAEngine:
             logger.warning("LLM RCA failed (%s); using rule-based fallback", exc)
             result = self._rule_based_fallback(signals)
             model_used = "rule-based-fallback"
+        observability.RCA_REPORTS.labels(path="fallback" if model_used == "rule-based-fallback" else "model").inc()
 
         report = RCAReport(
             incident_id=incident.id,

@@ -34,7 +34,7 @@ from typing import Any, Optional
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app import catalog
+from app import catalog, observability
 from app.clock import utcnow
 from app.config import settings
 from app.db import session as db_session
@@ -167,15 +167,20 @@ class Runtime:
             started = time.perf_counter()
             now = now or utcnow()
             db = db_session.SessionLocal()
+            failed = False
             try:
                 if not self.bootstrapped and not self.bootstrap(db, now):
                     return
                 self._tick(db, now)
+            except Exception:
+                failed = True
+                raise
             finally:
                 db.close()
                 self.tick_count += 1
                 self.last_tick_at = now
                 self.last_tick_ms = round((time.perf_counter() - started) * 1000, 1)
+                observability.observe_tick(time.perf_counter() - started, failed=failed)
 
     def _serving_colors(self) -> dict[str, list[str]]:
         out = {}
@@ -301,6 +306,7 @@ class Runtime:
 
         # --- 7: learning from presumed-normal readings ---
         active_incident = {i.service_name for i in self.incidents.all_active(db)}
+        observability.OPEN_INCIDENTS.set(len(active_incident))
         for s, r in results.items():
             normal = not r.auto_action and s not in active_incident and s not in chaos_running
             self.suite.learn(r, normal)
@@ -344,9 +350,8 @@ class Runtime:
         for s, b in burns.items():
             if b.worst != "FAST_BURN":
                 continue
-            # Only the latest rollout is watched. A newer rollout reuses the
-            # standby colour, so the release before it has no warm colour left
-            # to flip back to (manual rollback refuses it for the same reason).
+            # Only the latest rollout is watched: a newer one reuses the standby
+            # colour, leaving the release before it nothing warm to flip back to.
             dep = self.deployments.latest_for(db, s)
             if dep is None or not self.deployments.watch_window_open(dep, now):
                 continue
@@ -363,6 +368,7 @@ class Runtime:
                 burn_rate=fast.long_burn,
                 consensus_layers=r.agreeing_layers if r else 0,
                 cascade_root=root_service,
+                in_cooldown=self.rollback.in_cooldown(db, s, now),
             )
             if decision.should_rollback:
                 logger.warning("post-deploy rollback of %s %s: %s", s, dep.version, decision.reason)
@@ -377,6 +383,7 @@ class Runtime:
                 select(Deployment).where(Deployment.status.in_([s.value for s in ACTIVE_STATES]))
             ).scalars()
         }
+        observability.ACTIVE_ROLLOUTS.set(len(in_flight))
         quiet = {}
         for s in catalog.names():
             r, b = results.get(s), burns.get(s)
@@ -411,9 +418,8 @@ class Runtime:
         ):
             db.execute(delete(model).where(col < cutoff))
         compact_before = now - timedelta(hours=2)
-        # Only the hour before the cutoff: earlier rows were compacted by a
-        # previous pass (this runs every 10 minutes). Rows left raw by a long
-        # outage still sum correctly; compaction only saves work.
+        # Only the hour before the cutoff: earlier rows were compacted by an
+        # earlier pass, and rows left raw still sum correctly.
         raw = [
             r
             for r in db.execute(

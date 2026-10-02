@@ -22,6 +22,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from app import observability
 from app.config import settings
 from app.models import Deployment
 from app.services.burn_rate_engine import BurnRateService, GateVerdict
@@ -58,6 +59,7 @@ class CanaryEngine:
     def evaluate(self, db: Session, dep: Deployment, now: datetime) -> StageDecision:
         state = DeployState(dep.status)
         v = self.verdict(db, dep, now)
+        observability.GATE_VERDICTS.labels(verdict=v.verdict).inc()
         if v.verdict == "FAIL":
             return StageDecision("rollback", v, DeployState.ROLLING_BACK)
         if v.verdict == "WAIT":

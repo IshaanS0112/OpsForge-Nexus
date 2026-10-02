@@ -63,7 +63,8 @@ def test_manual_rollback_restores_stable(client, runtime, clock, db):
     r = client.post(f"/deployments/{dep_id}/rollback")
     assert r.status_code == 200 and r.json()["status"] == "ROLLED_BACK"
     assert runtime.cluster.live_color("ledger-svc") == "blue"
-    assert not runtime.rollback.in_cooldown("ledger-svc")  # manual rollbacks do not start a cooldown
+    # manual rollbacks do not start a cooldown
+    assert not runtime.rollback.in_cooldown(db, "ledger-svc", clock.now)
     assert client.post(f"/deployments/{dep_id}/rollback").status_code == 409
 
 
@@ -187,3 +188,23 @@ def test_console_snapshot_shape(client, runtime, clock):
     assert {"service": "checkout-api", "depends_on": "payments-svc"} in snap["edges"]
     info = client.get("/cluster").json()
     assert info["mode"] == "simulated" and info["bootstrapped"] is True
+
+
+def test_metrics_endpoint_exposes_the_loop_and_its_decisions(client, runtime, clock, db):
+    runtime.routing._rng = random.Random(11)
+    warm(runtime, clock, 8)
+    dep_id = client.post(
+        "/deployments", json={"service_name": "ledger-svc", "version": "v1.1.0", "simulate_failure": True}
+    ).json()["id"]
+    drive(runtime, clock, 40, until=lambda: status(db, dep_id) == "ROLLED_BACK")
+
+    r = client.get("/metrics")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/plain")
+    text = r.text
+    assert "opsforge_control_loop_ticks_total" in text
+    assert "opsforge_control_loop_tick_seconds_bucket" in text
+    assert 'opsforge_rollbacks_total{trigger="canary_gate_failed"}' in text
+    assert 'opsforge_canary_gate_evaluations_total{verdict="FAIL"}' in text
+    assert 'route="/deployments"' in text
+    # gauges are read from the live runtime when Prometheus scrapes
+    assert "opsforge_service_burn_rate{" in text and "opsforge_service_layer_warm{" in text

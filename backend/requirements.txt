@@ -10,6 +10,8 @@ httpx==0.28.1
 anthropic==1.6.0
 # Cluster access
 kubernetes==36.0.3
+# Prometheus exposition for the backend's own metrics
+prometheus-client==0.26.0
 # Anomaly-detection suite: STL decomposition and Isolation Forest
 numpy==2.5.3
 statsmodels==0.15.0

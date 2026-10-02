@@ -58,7 +58,7 @@ def test_failing_canary_is_rolled_back_by_its_burn_rate_gate(client, rt, clock, 
     inc = db.query(Incident).filter_by(related_deployment_id=dep_id).one()
     assert inc.severity == "HIGH" and "canary gate" in inc.trigger_reason
     assert inc.detection_context["release_specific"] is True  # stable colour was healthy
-    assert rt.rollback.in_cooldown("payments-svc")
+    assert rt.rollback.in_cooldown(db, "payments-svc", clock.now)
 
 
 def test_blue_green_switches_after_health_gate(client, rt, clock, db):

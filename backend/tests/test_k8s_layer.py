@@ -63,12 +63,26 @@ def test_pod_template_carries_the_workload_code_hash():
     assert m.code_hash("print('v2')") != stamped
 
 
-def test_stale_workload_code_rolls_the_deployment():
-    current = m.code_hash()
-    assert m.stale_code_patch({m.CODE_HASH_ANNOTATION: current, "x": "y"}, current) is None
-    for stale in (None, {}, {m.CODE_HASH_ANNOTATION: "0" * 16}):
-        patch = m.stale_code_patch(stale, current)
-        assert patch == {"spec": {"template": {"metadata": {"annotations": {m.CODE_HASH_ANNOTATION: current}}}}}
+def test_drift_patch_rolls_stale_code_and_settings():
+    code = m.code_hash()
+    defaults = {"STARTUP_DELAY_S": "15.0", "WORKERS": "4"}
+    matching = {m.CODE_HASH_ANNOTATION: code, "opsforge.io/config-hash": "abc"}
+
+    assert m.drift_patch(matching, {"STARTUP_DELAY_S": "15.0", "WORKERS": "4"}, code, defaults) is None
+
+    stale_code = m.drift_patch(None, defaults, code, defaults)
+    assert stale_code == {"spec": {"template": {"metadata": {"annotations": {m.CODE_HASH_ANNOTATION: code}}}}}
+
+    # Only the drifting env keys are named, so a release's own config_diff
+    # env survives the strategic merge.
+    stale_env = m.drift_patch(matching, {"STARTUP_DELAY_S": "3.0", "WORKERS": "4"}, code, defaults)
+    containers = stale_env["spec"]["template"]["spec"]["containers"]
+    assert containers == [{"name": m.CONTAINER_NAME, "env": [{"name": "STARTUP_DELAY_S", "value": "15.0"}]}]
+    assert "metadata" not in stale_env["spec"]["template"]
+
+    both = m.drift_patch({}, {}, code, defaults)
+    assert both["spec"]["template"]["metadata"]["annotations"] == {m.CODE_HASH_ANNOTATION: code}
+    assert len(both["spec"]["template"]["spec"]["containers"][0]["env"]) == 2
 
 
 def test_config_change_changes_pod_template_hash():

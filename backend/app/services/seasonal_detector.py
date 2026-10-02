@@ -23,6 +23,9 @@ Mechanics:
 * The residual scale is estimated robustly (MAD) from recent *per-tick*
   readings against the fitted trend + season, because live readings are
   single ticks, which are noisier than the bucket means STL was fitted on.
+  It carries the same per-metric floors as layer 1, and the expectation is
+  clamped at zero: these metrics cannot go negative, so a reading of 0.0
+  must never count as worse than expected.
 * Same rule as layer 1: residual z > 3.0 for K=3 consecutive readings,
   one-sided (all four metrics are "higher is worse").
 * Cold start: nothing is judged until ``seasonal_min_periods`` full seasons
@@ -205,10 +208,13 @@ class SeasonalLayer:
                 warmup[metric] = f"{have}/{need} buckets"
                 z = None
             else:
-                exp = fit.expected(series.index(now))
+                # None of these metrics can go below zero, so neither can their
+                # expectation: without the clamp a past spike leaves a negative
+                # swing behind and a healthy 0.0 reads as worse than expected.
+                exp = max(0.0, fit.expected(series.index(now)) + fit.resid_center)
                 absolute, relative = SIGMA_FLOORS.get(metric, (1e-9, 0.0))
                 scale = max(fit.resid_scale, absolute, relative * abs(fit.level))
-                z = (value - exp - fit.resid_center) / scale
+                z = (value - exp) / scale
                 expected[metric] = round(exp, 4)
                 warm = True
             rz[metric] = z

@@ -16,7 +16,13 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, futu
 Base = declarative_base()
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
-V1_BASELINE_REVISION = "0001"
+# A database without migration history sits at the newest revision whose
+# marker table exists. One entry per revision that creates a table, newest first.
+SCHEMA_MARKERS = (
+    ("0003", "rollback_cooldowns"),
+    ("0002", "service_dependencies"),
+    ("0001", "deployments"),
+)
 
 
 def get_db():
@@ -39,10 +45,9 @@ def init_db() -> None:
     """Bring the schema to the latest migration.
 
     - Fresh database: run every revision.
-    - Database created by V1's ``create_all`` (tables, no ``alembic_version``):
-      stamp it at the V1 baseline, then apply the V3 delta on top.
-    - Database created by ``create_all`` from the current models (the test
-      suite does this): already at head, so stamp head.
+    - Database created by ``create_all`` (V1 did this, and so does the test
+      suite): no ``alembic_version`` table, so work out which revision its
+      tables correspond to, stamp that, and apply everything newer.
     """
     from alembic import command
 
@@ -53,9 +58,7 @@ def init_db() -> None:
     with engine.begin() as conn:
         cfg.attributes["connection"] = conn
         if "deployments" in tables and "alembic_version" not in tables:
-            if "service_dependencies" in tables:
-                command.stamp(cfg, "head")
-                return
-            logger.info("V1 schema without migration history found; stamping %s", V1_BASELINE_REVISION)
-            command.stamp(cfg, V1_BASELINE_REVISION)
+            revision = next(rev for rev, marker in SCHEMA_MARKERS if marker in tables)
+            logger.info("schema without migration history found; stamping %s", revision)
+            command.stamp(cfg, revision)
         command.upgrade(cfg, "head")
