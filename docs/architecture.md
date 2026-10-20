@@ -26,7 +26,7 @@ threshold named here lives in [`backend/app/config.py`](../backend/app/config.py
                            │   ├─ incident service ─► cascade classification
                            │   └─ chaos engine
                            │
-                           ├─ RCA engine: structured signals ─► Claude (schema-constrained) or rule-based fallback
+                           ├─ RCA engine: structured signals ─► LLM (schema-constrained) or rule-based fallback
                            ▼
                           n8n  incident opened ─► cascade tree ─► RCA ─► impact ─► notify (mock) ─► store
 ```
@@ -557,11 +557,38 @@ is up during a 3 a.m. page: dark by default, with a light theme.
   gate, roll back.
 - **Chaos**: pick a fault, a target and a magnitude, watch the drill, read its
   report.
+- **Insights**: the analytics below — change failure rate, availability against
+  each objective, time to detect and restore, and incident cost by service, over
+  a 24-hour, 7-day or 30-day window.
 
 Charts are hand-built SVG: a symlog burn-rate chart with the 14.4×/6×/1×
 thresholds, sparklines with a crosshair, and a health ring. Status colours are
 reserved for status and always come with an icon and a label. Every chart has a
 text alternative.
+
+---
+
+## 15. Reliability analytics
+
+[`analytics.py`](../backend/app/services/analytics.py), served by
+`GET /analytics/summary?days=N`. Four sections, each derived from stored rows on
+every call rather than kept as a running total, so any figure can be traced back
+to the deployments, incidents, request counts and drills behind it.
+
+| Section | Figures | Source |
+|---|---|---|
+| Delivery | releases, rollbacks, change failure rate, release frequency, rollout duration p50/p95, outcome by strategy | `deployments` in terminal states |
+| Reliability | per-service availability, whether it met its objective, error budget consumed, fleet availability | `sli_samples` counts and `slo_config` |
+| Response | incidents split root/cascading, time to restore, p95 duration, what caught each one first, drill pass rate and time to detect | `incidents` and `chaos_experiments` |
+| Cost | priced impact in total and per service | `business_impact` joined to its incident |
+
+Two choices worth stating. **Detection latency is only measured on drills**,
+because a drill is the one case where the true onset of a fault is known; an
+incident's own detection time would otherwise be measured from the moment it was
+noticed, which is circular. And a window that cannot answer returns `null`
+rather than `0`, because "nothing shipped" and "nothing measured" are different
+answers, and a dashboard that renders them identically invites the wrong
+conclusion.
 
 ---
 

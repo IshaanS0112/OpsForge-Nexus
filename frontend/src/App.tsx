@@ -5,9 +5,11 @@ import ConsolePage from "./pages/ConsolePage";
 import DeploymentsPage from "./pages/DeploymentsPage";
 import IncidentPage from "./pages/IncidentPage";
 import IncidentsPage from "./pages/IncidentsPage";
+import InsightsPage from "./pages/InsightsPage";
 
 const NAV = [
   { to: "/", label: "Console", end: true },
+  { to: "/insights", label: "Insights", end: false },
   { to: "/incidents", label: "Incidents", end: false },
   { to: "/deployments", label: "Deployments", end: false },
   { to: "/chaos", label: "Chaos drills", end: false },
@@ -62,6 +64,7 @@ export default function App() {
       <main className="mx-auto max-w-[1680px] px-4 pt-4">
         <Routes>
           <Route path="/" element={<ConsolePage />} />
+          <Route path="/insights" element={<InsightsPage />} />
           <Route path="/incidents" element={<IncidentsPage />} />
           <Route path="/incidents/:id" element={<IncidentPage />} />
           <Route path="/deployments" element={<DeploymentsPage />} />

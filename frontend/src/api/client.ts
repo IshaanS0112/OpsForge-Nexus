@@ -399,8 +399,58 @@ export interface ChaosExperiment {
 }
 
 // ---------------------------------------------------------------- calls --
+export interface AnalyticsSummary {
+  generated_at: string;
+  window: { days: number; start: string; end: string };
+  delivery: {
+    releases: number;
+    rollbacks: number;
+    per_day: number | null;
+    change_failure_rate: number | null;
+    duration_p50_s: number | null;
+    duration_p95_s: number | null;
+    by_strategy: Record<string, { released: number; rolled_back: number }>;
+  };
+  reliability: {
+    services: {
+      service: string;
+      requests: number;
+      bad_requests: number;
+      availability: number | null;
+      slo_target: number;
+      meets_slo: boolean | null;
+      budget_consumed: number | null;
+    }[];
+    fleet_availability: number | null;
+    requests: number;
+    services_meeting_slo: number;
+    worst_service: string | null;
+  };
+  response: {
+    incidents: number;
+    root_incidents: number;
+    cascading_incidents: number;
+    resolved: number;
+    mttr_s: number | null;
+    duration_p95_s: number | null;
+    detection_sources: Record<string, number>;
+    drills: number;
+    drills_passed: number;
+    mttd_s: number | null;
+    recovery_p95_s: number | null;
+  };
+  cost: {
+    total_value: number;
+    priced_incidents: number;
+    revenue_per_request: number;
+    by_service: { service: string; value: number; incidents: number }[];
+    worst_service: string | null;
+  };
+}
+
 export const api = {
   snapshot: () => get<Snapshot>("/console/snapshot"),
+  analytics: (days: number) => get<AnalyticsSummary>(`/analytics/summary?days=${days}`),
   cluster: () => get<ClusterInfo>("/cluster"),
 
   deployments: (service?: string) =>

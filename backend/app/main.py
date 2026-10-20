@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import observability
 from app.config import settings
 from app.db.session import init_db
-from app.routers import chaos, console, deployments, incidents, metrics, services, webhooks
+from app.routers import analytics, chaos, console, deployments, incidents, metrics, services, webhooks
 from app.services.runtime import get_runtime
 
 logging.basicConfig(
@@ -53,7 +53,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for r in (deployments, incidents, metrics, services, chaos, console, webhooks):
+for r in (deployments, incidents, metrics, services, chaos, console, analytics, webhooks):
     app.include_router(r.router)
 
 observability.register_runtime_collector(get_runtime)
