@@ -15,7 +15,7 @@ prices what each incident cost, and proves its own detection works by breaking t
 
 6 services · 3 detection layers · 4 DORA + SLO metric families · 150 tests · one `docker compose up`
 
-[Quick start](#quick-start) · [What it answers](#what-it-answers) · [How it decides](#how-it-decides) · [Measured results](#measured-results) · [Architecture](docs/architecture.md)
+[Quick start](#quick-start) · [What it answers](#what-it-answers) · [How it decides](#how-it-decides) · [Measured results](#measured-results) · [Methods](docs/methods.md) · [Architecture](docs/architecture.md)
 
 </div>
 
@@ -37,7 +37,33 @@ or operations review asks every week:
 | **How fast do we react?** | Time to detect, time to restore, what caught each incident first | Incidents, plus chaos drills that know the true fault onset |
 | **What did it cost?** | Priced impact per incident and per service, with the inputs stored | Measured bad requests × revenue per request |
 
-`GET /analytics/summary?days=7` returns all four. The Insights screen above is that one call, rendered.
+`GET /analytics/summary?days=7` returns all four. The Insights screen above is that one call, rendered —
+and so is the report, if a terminal is where you work:
+
+```console
+$ python3 scripts/report.py --days 1
+
+33% OF ROLLOUTS WERE TAKEN BACK AND 2 OF 6 SERVICES HELD THEIR OBJECTIVE.
+
+DELIVERY
+  Releases              2 (2.0/day)
+  Rolled back           1
+  Change failure rate   33%
+  Rollout duration      10.1s median, 40.2s p95
+
+RESPONSE
+  Incidents         4 (2 root, 2 cascading)
+  Time to restore   7m 55s mean, 7m 59s p95
+  Time to detect    2.5s (measured by drills)
+  Drills passed     1 of 1
+  Caught first by   burn-rate page (3), canary gate (1)
+
+COST
+  Estimated impact    $1,133.00
+  Costliest service   ledger-svc
+```
+
+*(Real output from a run: two releases, one bad canary caught by its gate, one latency drill.)*
 
 ## How it works
 
@@ -66,6 +92,10 @@ evidence the system already computed, and a rule-based fallback ranks the same e
 is configured.
 
 ## How it decides
+
+Each one traces to a published source — Wald's sequential test, the SRE Workbook's
+multiwindow alerts, STL, Isolation Forest, Kahn's topological sort, DORA's metric
+definitions — mapped to its implementation and its test in [`docs/methods.md`](docs/methods.md).
 
 | Decision | Method | Why this one |
 |---|---|---|
@@ -100,6 +130,15 @@ python3 scripts/run_drills.py     # the drill suite; records land in docs/drills
 ```
 
 No Docker? `CLUSTER_MODE=simulated` runs the same backend against an in-memory cluster.
+
+**Your own services, not the demo fleet.** Post any service's readings to
+`/metrics/ingest-batch` and they go through the same three detector layers, the same
+consensus rule and the same incident pipeline as measured traffic:
+
+```bash
+curl -X POST localhost:8000/metrics/ingest-batch -H 'content-type: application/json' \
+  -d '{"service_name":"my-api","error_rate":0.15,"latency_p95":1400,"cpu_usage":0.9,"memory_usage":0.8,"requests":500}'
+```
 
 <div align="center">
 <img src="docs/screenshots/console.jpg" alt="Ops Console: dependency graph with one root incident and two cascading services" width="860">

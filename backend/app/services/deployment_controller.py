@@ -360,8 +360,11 @@ class DeploymentController:
             return
         self._health.pop(dep.id, None)
         if not result.passed:
+            failure = result.reason
             decision = self.rollback_engine.evaluate(
-                dep.service_name, consecutive_health_failures=result.consecutive_failures
+                dep.service_name,
+                smoke_check_failure=failure if canary else None,
+                health_gate_failure=None if canary else failure,
             )
             self._rollback(db, dep, now, decision)
             return
@@ -480,6 +483,9 @@ class DeploymentController:
         never filed as a cascade of an upstream incident."""
         if decision.trigger == RollbackTrigger.ROLLOUT_FAILED:
             return True
+        if decision.trigger == RollbackTrigger.SMOKE_CHECK_FAILED:
+            return True  # the candidate never served a request
+
         if decision.trigger not in (RollbackTrigger.CANARY_GATE_FAILED, RollbackTrigger.CONSECUTIVE_HEALTH_FAILURES):
             return False
         if gate is not None:

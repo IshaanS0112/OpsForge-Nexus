@@ -40,6 +40,7 @@ TERMINAL_STATES = (DeployState.LIVE.value, DeployState.ROLLED_BACK.value)
 DETECTION_SOURCES = (
     ("canary gate", "canary gate"),
     ("rollout failed", "rollout gate"),
+    ("smoke check", "smoke check"),
     ("consecutive failed health checks", "health gate"),
     ("anomaly layers agree", "detector consensus"),
     ("FAST_BURN", "burn-rate page"),
@@ -193,10 +194,15 @@ def cost(db: Session, window: Window) -> dict:
             select(BusinessImpact, Incident)
             .join(Incident, Incident.id == BusinessImpact.incident_id)
             .where(Incident.detected_at >= window.start, Incident.detected_at <= window.end)
+            .order_by(BusinessImpact.calculated_at)
         ).all()
     )
+    # Impact rows are append-only: recalculating an incident writes another.
+    # Count each incident once, at its most recent figure, or simply asking for
+    # the report twice would inflate the cost.
+    latest = {impact.incident_id: (impact, incident) for impact, incident in rows}
     per_service: dict[str, dict[str, float]] = {}
-    for impact, incident in rows:
+    for impact, incident in latest.values():
         entry = per_service.setdefault(
             incident.service_name, {"service": incident.service_name, "value": 0.0, "incidents": 0}
         )
@@ -206,7 +212,7 @@ def cost(db: Session, window: Window) -> dict:
     total = sum(e["value"] for e in ranked)
     return {
         "total_value": round(total, 2),
-        "priced_incidents": len(rows),
+        "priced_incidents": len(latest),
         "revenue_per_request": settings.revenue_per_request,
         "by_service": [{**e, "value": round(e["value"], 2)} for e in ranked[:10]],
         "worst_service": ranked[0]["service"] if ranked else None,

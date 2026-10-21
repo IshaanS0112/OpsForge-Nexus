@@ -45,6 +45,7 @@ logger = logging.getLogger(__name__)
 
 class RollbackTrigger(str, Enum):
     CONSECUTIVE_HEALTH_FAILURES = "consecutive_health_failures"
+    SMOKE_CHECK_FAILED = "smoke_check_failed"
     ROLLOUT_FAILED = "rollout_failed"
     CANARY_GATE_FAILED = "canary_gate_failed"
     SLO_FAST_BURN = "slo_fast_burn"
@@ -104,7 +105,8 @@ class RollbackEngine:
         self,
         service: str,
         *,
-        consecutive_health_failures: int = 0,
+        health_gate_failure: Optional[str] = None,
+        smoke_check_failure: Optional[str] = None,
         rollout_failure: Optional[str] = None,
         canary_gate_failure: Optional[str] = None,
         burn_severity: Optional[str] = None,
@@ -123,13 +125,14 @@ class RollbackEngine:
         if rollout_failure:
             return RollbackDecision(True, RollbackTrigger.ROLLOUT_FAILED, f"rollout failed: {rollout_failure}")
 
-        if consecutive_health_failures >= settings.health_consecutive_failures_to_rollback:
-            return RollbackDecision(
-                True,
-                RollbackTrigger.CONSECUTIVE_HEALTH_FAILURES,
-                f"{consecutive_health_failures} consecutive failed health checks "
-                f"(>= {settings.health_consecutive_failures_to_rollback})",
-            )
+        # The gate applies its own fail limit and hands over the verdict. The
+        # engine does not re-derive it: duplicating the threshold here is how a
+        # canary's one-poll smoke check once failed with "no condition met".
+        if smoke_check_failure:
+            return RollbackDecision(True, RollbackTrigger.SMOKE_CHECK_FAILED, smoke_check_failure)
+
+        if health_gate_failure:
+            return RollbackDecision(True, RollbackTrigger.CONSECUTIVE_HEALTH_FAILURES, health_gate_failure)
 
         if canary_gate_failure:
             return RollbackDecision(

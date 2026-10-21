@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you reference this project, please cite it as below."
+title: "OpsForge Nexus"
+abstract: >-
+  Reliability analytics and release decisioning for a microservice fleet:
+  canary rollouts gated by a sequential probability ratio test, SLO
+  error-budget burn-rate alerting, a three-layer anomaly suite requiring
+  cross-layer consensus, dependency-aware cascade detection, chaos drills that
+  measure detection and rollback latency, and priced incident impact.
+type: software
+authors:
+  - family-names: Singh
+    given-names: Ishaan
+version: 3.0.0
+date-released: "2026-10-21"
+license: MIT
+repository-code: "https://github.com/IshaanS0112/OpsForge-Nexus"
+keywords:
+  - site reliability engineering
+  - service level objectives
+  - error budget
+  - anomaly detection
+  - chaos engineering
+  - DORA metrics
+  - kubernetes
+  - observability

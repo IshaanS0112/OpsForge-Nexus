@@ -14,11 +14,18 @@ from app.services.rollback_engine import RollbackEngine, RollbackTrigger
 T0 = datetime(2026, 9, 28, 12, 0, 0)
 
 
-def test_consecutive_health_failures_trigger():
+def test_the_gate_that_failed_names_the_trigger():
+    """The gate applies its own fail limit; the engine records which one spoke.
+    When the engine second-guessed that with a threshold of its own, a canary's
+    one-poll smoke check rolled back under the reason "no condition met"."""
     eng = RollbackEngine()
-    d = eng.evaluate("svc", consecutive_health_failures=3)
-    assert d.should_rollback
-    assert d.trigger == RollbackTrigger.CONSECUTIVE_HEALTH_FAILURES
+    full = eng.evaluate("svc", health_gate_failure="3 consecutive failed health checks")
+    assert full.should_rollback and full.trigger == RollbackTrigger.CONSECUTIVE_HEALTH_FAILURES
+    assert "3 consecutive" in full.reason
+
+    smoke = eng.evaluate("svc", smoke_check_failure="smoke check failed: the candidate is not serving")
+    assert smoke.should_rollback and smoke.trigger == RollbackTrigger.SMOKE_CHECK_FAILED
+    assert "not serving" in smoke.reason
 
 
 def test_rollout_and_canary_gate_failures_trigger():
@@ -66,7 +73,8 @@ def test_rollout_gates_are_not_suppressed_by_cooldown():
     """A candidate failing its own gate must be aborted even during cooldown,
     or it would be left half-rolled-out."""
     eng = RollbackEngine()
-    assert eng.evaluate("svc", consecutive_health_failures=3, in_cooldown=True).should_rollback
+    health = eng.evaluate("svc", health_gate_failure="3 consecutive failed health checks", in_cooldown=True)
+    assert health.should_rollback
     assert eng.evaluate("svc", canary_gate_failure="x", in_cooldown=True).should_rollback
 
 

@@ -26,7 +26,8 @@ def test_detection_source_reads_the_reason_the_opener_recorded():
     cases = {
         "Rollback of v2: canary gate failed: burning at 500x": "canary gate",
         "Rollback of v2: rollout failed: ImagePullBackOff for 20s": "rollout gate",
-        "Rollback of v2: 3 consecutive failed health checks (>= 3)": "health gate",
+        "Rollback of v2: 3 consecutive failed health checks": "health gate",
+        "Rollback of v2: smoke check failed: the candidate is not serving": "smoke check",
         "2/3 anomaly layers agree (zscore, seasonal)": "detector consensus",
         "FAST_BURN 1h/5m at 19.8x/69.5x": "burn-rate page",
         "something new": "other",
@@ -112,8 +113,8 @@ def _seed(db, now=NOW):
     )
     db.add_all([root, child])
     db.commit()
-    db.add(BusinessImpact(incident_id=root.id, affected_requests=1000, estimated_impact_value=250.0))
-    db.add(BusinessImpact(incident_id=child.id, affected_requests=400, estimated_impact_value=100.0))
+    db.add(BusinessImpact(incident_id=root.id, affected_requests=1000, estimated_impact_value=250.0, calculated_at=now))
+    db.add(BusinessImpact(incident_id=child.id, affected_requests=400, estimated_impact_value=100.0, calculated_at=now))
     db.commit()
 
 
@@ -161,3 +162,24 @@ def test_summary_endpoint_serves_the_same_figures(client, db):
     assert body["window"]["days"] == 90
     assert body["delivery"]["releases"] >= 1
     assert client.get("/analytics/summary", params={"days": 0}).status_code == 422
+
+
+def test_recalculated_impact_counts_the_incident_once(db):
+    """Impact rows are append-only, so asking for a report twice must not
+    double the cost: the newest figure per incident wins."""
+    _seed(db)
+    incident = next(i for i in db.query(Incident).all() if i.service_name == "payments-svc")
+    db.add(
+        BusinessImpact(
+            incident_id=incident.id,
+            affected_requests=1200,
+            estimated_impact_value=300.0,
+            calculated_at=NOW + timedelta(minutes=1),
+        )
+    )
+    db.commit()
+
+    cost = analytics.summary(db, NOW, days=1)["cost"]
+    assert cost["priced_incidents"] == 2  # two incidents, three rows
+    assert cost["total_value"] == 400.0  # 300 (recalculated) + 100, not 650
+    assert cost["by_service"][0] == {"service": "payments-svc", "value": 300.0, "incidents": 1}

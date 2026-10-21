@@ -186,3 +186,20 @@ def test_incidents_resolve_after_quiet_period(client, rt, clock, db):
     )
     inc = db.query(Incident).filter_by(service_name="catalog-svc").one()
     assert inc.status == "RESOLVED" and inc.resolved_at is not None
+
+
+def test_a_candidate_that_never_serves_names_the_gate_that_caught_it(client, rt, clock, db):
+    """A canary whose smoke check fails is rolled back before any user traffic.
+    The incident has to say so: this once read "no rollback condition met",
+    because the engine re-derived the verdict from a threshold the smoke check
+    does not use."""
+    warm(rt, clock, 6)
+    dep_id = _deploy(client, version="v3.0.0", config_diff={"FAULT_ERROR_RATE": 1.0})
+    drive(rt, clock, 20, until=lambda: status(db, dep_id) == "ROLLED_BACK")
+
+    assert status(db, dep_id) == "ROLLED_BACK"
+    inc = db.query(Incident).filter_by(related_deployment_id=dep_id).one()
+    assert "smoke check failed" in inc.trigger_reason
+    assert inc.detection_context["trigger"] == "smoke_check_failed"
+    assert inc.detection_context["release_specific"] is True
+    assert not any(h["stage"].startswith("CANARY") for h in db.get(Deployment, dep_id).stage_history)

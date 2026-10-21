@@ -210,7 +210,11 @@ class HealthGate:
                     passed=False,
                     consecutive_failures=self.consecutive_failures,
                     polls=self.polls,
-                    reason=f"{self.consecutive_failures} consecutive failed health checks",
+                    reason=(
+                        f"{self.consecutive_failures} consecutive failed health checks"
+                        if self.checker.fail_limit > 1
+                        else "smoke check failed: the candidate is not serving"
+                    ),
                 )
         if self.polls >= self.checker.polls_needed:
             return self.finish()
