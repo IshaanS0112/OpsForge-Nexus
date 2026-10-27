@@ -7,11 +7,11 @@
 Measures six services on a real Kubernetes cluster, decides whether each release is safe,
 prices what every incident cost, and proves its own detection works by breaking things on purpose.
 
-[![CI](https://github.com/IshaanS0112/OpsForge-Nexus/actions/workflows/ci.yml/badge.svg)](https://github.com/IshaanS0112/OpsForge-Nexus/actions/workflows/ci.yml)
+[![CI](https://github.com/Ishaana0112/OpsForge-Nexus/actions/workflows/ci.yml/badge.svg)](https://github.com/Ishaana0112/OpsForge-Nexus/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB.svg?logo=python&logoColor=white)](https://www.python.org)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB.svg?logo=react&logoColor=black)](https://react.dev)
-[![Tests](https://img.shields.io/badge/tests-144%20backend%20%2B%208%20frontend-3FA796.svg)](#tests)
+[![Tests](https://img.shields.io/badge/tests-145%20backend%20%2B%208%20frontend-3FA796.svg)](#tests)
 
 [Quick start](#quick-start) · [What it answers](#what-it-answers) · [How it decides](#how-it-decides) · [Measured results](#measured-results) · [Methods](docs/methods.md) · [Architecture](docs/architecture.md)
 
@@ -87,6 +87,50 @@ flowchart LR
 Everything left of RCA is deterministic code. A language model only ranks causes at the end, over
 evidence the system already computed; a rule-based fallback ranks the same evidence when no key is set.
 
+### A release, step by step
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Deploying: new version to standby colour
+    Deploying --> Smoke: pods Ready
+    Deploying --> RolledBack: image pull or crash loop for 20 s
+    Smoke --> Canary5: candidate serves
+    Smoke --> RolledBack: not serving
+    Canary5 --> Canary25: gate passes
+    Canary25 --> Canary50: gate passes
+    Canary50 --> Canary100: gate passes
+    Canary100 --> Live: selector switches
+    Canary5 --> RolledBack: gate fails
+    Canary25 --> RolledBack: gate fails
+    Canary50 --> RolledBack: gate fails
+    Canary100 --> RolledBack: gate fails
+    Live --> RolledBack: burn-rate page + consensus, first 15 min
+```
+
+Each stage sends that share of traffic to the new version and holds for its window. The gate is a
+sequential test on the canary's own error ratio, so a bad release fails as soon as the evidence is in —
+two bad requests close together are enough — while a healthy one passes at the end of the window.
+
+### One failure, one incident
+
+```mermaid
+flowchart RL
+    N[notification-svc<br/>cascading] --> C[checkout-api<br/>cascading]
+    C --> P[payments-svc<br/>cascading]
+    P --> L[ledger-svc<br/>ROOT: +400 ms]
+    C --> I[inventory-svc<br/>healthy]
+    I --> CA[catalog-svc<br/>healthy]
+    style L fill:#5c2b2b,stroke:#d65c5c,color:#fff
+    style P fill:#3a2f22,stroke:#e0a93e,color:#fff
+    style C fill:#3a2f22,stroke:#e0a93e,color:#fff
+    style N fill:#3a2f22,stroke:#e0a93e,color:#fff
+```
+
+When ledger slows down, everything that calls it slows too. Instead of four unrelated pages, the
+dependency graph files one **root** incident on ledger with three **cascading** ones under it — and a
+cascading service's release is never rolled back, because rolling it back cannot fix its upstream.
+
 ## How it decides
 
 Each decision traces to a published source. Every row maps to its implementation and its test in
@@ -107,7 +151,7 @@ Each decision traces to a published source. Every row maps to its implementation
 Needs Docker with about 3 GB free. The first run creates the Kubernetes cluster.
 
 ```bash
-git clone https://github.com/IshaanS0112/OpsForge-Nexus.git
+git clone https://github.com/Ishaana0112/OpsForge-Nexus.git
 cd OpsForge-Nexus
 docker compose up -d --build
 ```
@@ -162,7 +206,7 @@ Two findings worth reading:
 ## Tests
 
 ```bash
-cd backend && pip install -r requirements-dev.txt && ruff check . && pytest    # 144
+cd backend && pip install -r requirements-dev.txt && ruff check . && pytest    # 145
 cd frontend && npm ci && npm run typecheck && npm test                         # 8
 ```
 
