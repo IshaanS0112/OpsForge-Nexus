@@ -41,8 +41,8 @@ services:
     build: ./backend
     environment:
       DATABASE_URL: postgresql://opsforge:opsforge@postgres:5432/opsforge
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      LLM_MODEL: ${LLM_MODEL:-claude-opus-5}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
       CLUSTER_MODE: ${CLUSTER_MODE:-kind}
       KUBECONFIG: /kube/config
       CLUSTER_NODE_HOST: opsforge-control-plane

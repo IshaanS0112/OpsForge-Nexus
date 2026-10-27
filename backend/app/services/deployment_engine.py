@@ -21,8 +21,6 @@ gate against the candidate colour, canary stages are gated by
 
 from __future__ import annotations
 
-import time
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
@@ -123,15 +121,9 @@ class HealthCheckResult:
     reason: str
 
 
-# A sampler returns a HealthSample for a given poll index. The deployment
-# controller's sampler sends smoke requests to the candidate colour's Service.
-Sampler = Callable[[int], HealthSample]
-
-
 class HealthChecker:
-    """Polls a sampler over the configured window; a poll passes only if
-    success_rate >= threshold AND p95 < max AND no 5xx spike. Three consecutive
-    failed polls fail the gate (-> rollback)."""
+    """The pass criteria for one health poll: success_rate >= threshold AND
+    p95 < max AND no 5xx spike. Three consecutive failed polls fail the gate."""
 
     def __init__(
         self,
@@ -173,25 +165,11 @@ class HealthChecker:
             and not (self.spike_check and s.has_5xx_spike)
         )
 
-    def run(self, sampler: Sampler, sleep: Callable[[float], None] = time.sleep) -> HealthCheckResult:
-        """Poll the sampler over the window, sleeping ``interval_s`` between
-        polls so the gate is genuinely time-based. Set ``settings.health_check_fast``
-        to skip the sleeps (tests/demo). ``sleep`` is injectable for tests."""
-        gate = HealthGate(self)
-        do_sleep = not settings.health_check_fast
-        for i in range(self.polls_needed):
-            result = gate.observe(sampler(i))
-            if result is not None:
-                return result
-            if do_sleep and i < self.polls_needed - 1:
-                sleep(self.interval_s)
-        return gate.finish()
-
 
 @dataclass
 class HealthGate:
-    """Incremental form of ``HealthChecker.run`` — one poll per call — so the
-    control loop can spread the gate across ticks instead of blocking."""
+    """One poll per control-loop tick, so the gate spreads across its window
+    instead of blocking the loop."""
 
     checker: HealthChecker = field(default_factory=HealthChecker)
     polls: int = 0
@@ -237,15 +215,3 @@ def sample_from_outcomes(outcomes) -> HealthSample:
         p95_latency_ms=p95,
         has_5xx_spike=fives > max(1, len(outcomes) // 10),
     )
-
-
-# ---- fixed samplers: kept for the pure-gate tests ----
-def healthy_sampler(_: int) -> HealthSample:
-    return HealthSample(success_rate=0.999, p95_latency_ms=180.0, has_5xx_spike=False)
-
-
-def failing_sampler(i: int) -> HealthSample:
-    # first poll looks fine, then it degrades — realistic bad-deploy shape
-    if i == 0:
-        return HealthSample(success_rate=0.995, p95_latency_ms=220.0)
-    return HealthSample(success_rate=0.80, p95_latency_ms=1200.0, has_5xx_spike=True)

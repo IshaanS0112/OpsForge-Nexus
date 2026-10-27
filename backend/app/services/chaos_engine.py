@@ -43,7 +43,7 @@ recorded on the timeline, not just the earliest.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import select
@@ -357,7 +357,3 @@ class ChaosEngine:
         return list(
             db.execute(select(ChaosExperiment).order_by(ChaosExperiment.injected_at.desc()).limit(limit)).scalars()
         )
-
-    @staticmethod
-    def duration_left(exp: ChaosExperiment, now: datetime) -> float:
-        return max(0.0, ((exp.injected_at + timedelta(seconds=exp.duration_s or 0)) - now).total_seconds())

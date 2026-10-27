@@ -29,7 +29,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from app import catalog
 from app.catalog import ServiceSpec
 from app.config import settings
 from app.k8s import manifests as m
@@ -360,7 +359,3 @@ class SimulatedCluster:
                 "caused_by": r.get("caused_by") or r.get("signature") or sig,
             }
         return out
-
-
-def catalog_specs() -> list[ServiceSpec]:
-    return list(catalog.CATALOG)

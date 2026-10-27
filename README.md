@@ -172,7 +172,7 @@ release and a canary through all four stages, then injects a fault and checks th
 ## Stack
 
 FastAPI · SQLAlchemy + Alembic · PostgreSQL · Kubernetes (kind) · NumPy · statsmodels · scikit-learn ·
-Prometheus · React 19 + TypeScript + Vite · n8n · Docker Compose · Anthropic API for ranking, with a
+Prometheus · React 19 + TypeScript + Vite · n8n · Docker Compose · an LLM API for ranking, with a
 deterministic fallback.
 
 ## Scope

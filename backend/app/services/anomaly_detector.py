@@ -39,7 +39,7 @@ import logging
 import statistics
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import or_, select
@@ -113,9 +113,6 @@ class AnomalyStreak:
 
     def count(self, service: str, metric: str) -> int:
         return self._counts.get((service, metric), 0)
-
-    def reset(self, service: str, metric: str) -> None:
-        self._counts.pop((service, metric), None)
 
 
 @dataclass
@@ -275,7 +272,3 @@ class AnomalyDetectorService:
         )
         values = [row[0] for row in db.execute(stmt).all()]
         return statistics.fmean(values) if values else None
-
-
-def default_since() -> datetime:
-    return utcnow() - timedelta(minutes=settings.rca_lookback_minutes)

@@ -86,7 +86,7 @@ def _seed_incident(db, **incident_kw):
 
 
 class _Parsed:
-    def __init__(self, parsed=None, stop_reason="end_turn", model="claude-opus-5"):
+    def __init__(self, parsed=None, stop_reason="end_turn", model="test-model"):
         self.parsed_output = parsed
         self.stop_reason = stop_reason
         self.stop_details = None
@@ -189,7 +189,7 @@ def test_llm_success_path_uses_structured_output(db):
     parsed = RCAResult(root_cause_candidates=[RCACandidate(cause="bad deploy", confidence="high", evidence="342 NPEs")])
     engine = RCAEngine(llm_client=_client(_Parsed(parsed), calls=calls))
     report = engine.run(db, incident)
-    assert report.llm_model_used == "claude-opus-5"
+    assert report.llm_model_used == "test-model"
     assert report.root_cause_candidates[0]["cause"] == "bad deploy"
     sent = calls[0]
     assert sent["output_format"] is RCAResult  # schema-constrained, no free-text JSON parsing

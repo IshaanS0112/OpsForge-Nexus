@@ -6,11 +6,21 @@ from app.services.deployment_engine import (
     DeploymentStateMachine,
     DeployState,
     HealthChecker,
+    HealthGate,
     HealthSample,
     IllegalTransition,
-    failing_sampler,
-    healthy_sampler,
 )
+
+HEALTHY = HealthSample(success_rate=0.999, p95_latency_ms=180.0)
+FAILING = HealthSample(success_rate=0.80, p95_latency_ms=1200.0, has_5xx_spike=True)
+
+
+def _run(gate: HealthGate, samples):
+    for sample in samples:
+        result = gate.observe(sample)
+        if result is not None:
+            return result
+    return None
 
 
 def test_happy_path_transitions():
@@ -46,29 +56,30 @@ def test_rollback_branch_is_legal_from_health_checking():
         sm.transition(DeployState.LIVE)  # terminal
 
 
-def test_health_gate_passes_when_healthy():
-    result = HealthChecker().run(healthy_sampler)
-    assert result.passed is True
-    assert result.consecutive_failures == 0
+def test_health_gate_passes_after_its_full_window():
+    checker = HealthChecker(interval_s=5, window_s=20)  # four polls
+    gate = HealthGate(checker)
+    assert [gate.observe(HEALTHY) for _ in range(3)] == [None, None, None]  # still polling
+    result = gate.observe(HEALTHY)
+    assert result.passed and result.polls == 4
 
 
-def test_health_gate_fails_on_three_consecutive():
-    result = HealthChecker().run(failing_sampler)
+def test_health_gate_fails_on_three_consecutive_failures():
+    result = _run(HealthGate(HealthChecker()), [HEALTHY, FAILING, FAILING, FAILING])
+    assert result.passed is False and result.consecutive_failures == 3
+    assert result.reason == "3 consecutive failed health checks"
+
+
+def test_a_good_poll_resets_the_failure_streak():
+    gate = HealthGate(HealthChecker(interval_s=5, window_s=60))
+    assert _run(gate, [FAILING, FAILING, HEALTHY, FAILING, FAILING]) is None
+    assert gate.consecutive_failures == 2
+
+
+def test_canary_smoke_check_fails_on_one_poll_and_says_so():
+    result = HealthGate(HealthChecker.canary_smoke()).observe(HealthSample(success_rate=0.5, p95_latency_ms=100.0))
     assert result.passed is False
-    assert result.consecutive_failures >= 3
-
-
-def test_health_gate_sleeps_between_polls(monkeypatch):
-    """Proves the gate is genuinely time-based: it sleeps interval_s between
-    each poll over the window (not a single instant check)."""
-    from app.config import settings
-
-    monkeypatch.setattr(settings, "health_check_fast", False)
-    calls: list[float] = []
-    hc = HealthChecker(interval_s=5, window_s=20)  # -> 4 polls, 3 gaps
-    result = hc.run(healthy_sampler, sleep=lambda s: calls.append(s))
-    assert result.passed is True
-    assert calls == [5, 5, 5]  # slept between every consecutive pair of polls
+    assert result.reason == "smoke check failed: the candidate is not serving"
 
 
 def test_poll_pass_criteria():

@@ -10,7 +10,6 @@ export const STATUS_META: Record<Status, { label: string; hint: string }> = {
   canary: { label: "Canary", hint: "A canary stage is in progress" },
 };
 
-export const statusColor = (s: Status) => `var(--${s})`;
 
 /** A tone for things outside the five statuses (in-flight steps, labels). */
 export type Tone = Status | "neutral";

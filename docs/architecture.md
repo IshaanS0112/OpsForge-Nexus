@@ -452,7 +452,7 @@ enforced in code:
    signatures they propagated from; a deploy-correlation flag; the dependency
    context (cascading or not, root service, blast radius); how many detector
    layers agreed; the burn rate; and any chaos drill that was running.
-3. **Schema-constrained model call**: `claude-opus-5` through structured
+3. **Schema-constrained model call**: the configured model (`LLM_MODEL`) through structured
    outputs (`messages.parse` with a Pydantic schema), so a reply is valid JSON of
    the right shape by construction. The prompt forbids speculation beyond the
    data, asks for the top three causes with confidence and cited evidence, and

@@ -23,7 +23,7 @@ permissive so the system can be driven easily:
 
 ## Secrets
 
-`ANTHROPIC_API_KEY` is read from the environment and never logged or persisted.
+`LLM_API_KEY` is read from the environment and never logged or persisted.
 RCA reports store the signals the model was given, not credentials. `.env` files
 and the generated kubeconfig under `.kube/` are git-ignored; nothing in the
 repository contains a key.

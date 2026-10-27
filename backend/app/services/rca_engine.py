@@ -284,11 +284,11 @@ class RCAEngine:
     def _client(self):
         if self._llm_client is not None:
             return self._llm_client
-        if not settings.anthropic_api_key:
-            raise RuntimeError("no anthropic_api_key configured")
+        if not (settings.llm_api_key and settings.llm_model):
+            raise RuntimeError("no LLM configured (LLM_API_KEY and LLM_MODEL)")
         from anthropic import Anthropic
 
-        return Anthropic(api_key=settings.anthropic_api_key, timeout=settings.llm_timeout_seconds)
+        return Anthropic(api_key=settings.llm_api_key, timeout=settings.llm_timeout_seconds)
 
     def _call_llm(self, signals: dict[str, Any]) -> dict[str, Any]:
         """Rank causes with the output constrained to ``RCAResult``'s JSON
@@ -301,7 +301,7 @@ class RCAEngine:
             messages=[{"role": "user", "content": json.dumps(signals, default=str)}],
             output_format=RCAResult,
             output_config={"effort": settings.llm_effort},
-            # A declined request is re-run server-side on Anthropic's
+            # A declined request is re-run server-side on the provider's
             # recommended fallback model instead of returning a refusal.
             fallbacks="default",
             betas=["server-side-fallback-2026-07-01"],

@@ -107,17 +107,6 @@ export function Panel({
   );
 }
 
-/** Label / value pair. Values use proportional figures (they stand alone). */
-export function Stat({ label, value, sub, mono = true }: { label: string; value: ReactNode; sub?: ReactNode; mono?: boolean }) {
-  return (
-    <div className="min-w-0">
-      <div className="text-[12px] font-medium text-muted">{label}</div>
-      <div className={`mt-0.5 truncate text-[18px] font-semibold ${mono ? "mono" : ""}`}>{value}</div>
-      {sub && <div className="mt-0.5 truncate text-[12px] text-text-2">{sub}</div>}
-    </div>
-  );
-}
-
 export function Empty({ children }: { children: ReactNode }) {
   return <div className="rounded-lg border border-dashed border-grid px-4 py-6 text-center text-[13px] text-muted">{children}</div>;
 }

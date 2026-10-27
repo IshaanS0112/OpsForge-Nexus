@@ -58,10 +58,6 @@ class RollbackDecision:
     trigger: Optional[RollbackTrigger] = None
     reason: str = ""
 
-    @property
-    def as_reason(self) -> str:
-        return self.reason
-
 
 class RollbackEngine:
     """Decides rollbacks and keeps the anti-flapping cooldown.

@@ -8,7 +8,7 @@ rather than the rule-based fallback; it is git-ignored, since it would embed
 one account's model output in the repository.
 
 Prereq: the backend must run WITH a key so the model path (not the fallback)
-executes, e.g. ``ANTHROPIC_API_KEY=sk-ant-... docker compose up -d``. Then,
+executes, e.g. ``LLM_API_KEY=... LLM_MODEL=... docker compose up -d``. Then,
 from the repo root:
 
     python3 scripts/capture_rca_sample.py
@@ -70,7 +70,7 @@ def main() -> int:
     if model == "rule-based-fallback":
         print(
             "\n!  RCA used the RULE-BASED FALLBACK, not a model.\n"
-            "   Start the backend with ANTHROPIC_API_KEY set and re-run to capture\n"
+            "   Start the backend with LLM_API_KEY and LLM_MODEL set and re-run to capture\n"
             "   the model path. (The fallback shows graceful degradation; this\n"
             "   sample is meant to capture the model's ranking.)"
         )

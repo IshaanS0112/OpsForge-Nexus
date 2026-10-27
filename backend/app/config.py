@@ -10,9 +10,9 @@ class Settings(BaseSettings):
     # --- Database ---
     database_url: str = "postgresql://opsforge:opsforge@postgres:5432/opsforge"
 
-    # --- LLM (Claude) ---
-    anthropic_api_key: str = ""
-    llm_model: str = "claude-opus-5"
+    # --- LLM ranking for RCA (optional: unset means the rule-based ranking runs) ---
+    llm_api_key: str = ""
+    llm_model: str = ""
     # The model thinks before answering, so allow more than a bare completion.
     llm_timeout_seconds: float = 60.0
     llm_effort: str = "high"  # low | medium | high | xhigh | max
@@ -68,7 +68,6 @@ class Settings(BaseSettings):
     canary_smoke_min_success_rate: float = 0.7
 
     # --- Canary rollout ---
-    canary_stages: tuple[int, ...] = (5, 25, 50, 100)
     canary_stage_window_s: float = 45.0  # confirmation window per stage
     canary_min_requests: int = 20  # canary requests needed before a stage can pass
     canary_max_stage_wait_s: float = 300.0  # insufficient traffic for this long -> fail

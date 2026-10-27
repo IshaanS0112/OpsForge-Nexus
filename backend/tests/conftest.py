@@ -19,7 +19,7 @@ from sqlalchemy.pool import StaticPool
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 os.environ.setdefault("DATABASE_URL", "sqlite://")
-# Skip real inter-poll sleeps so the health gate runs instantly under test.
+# Run a health gate's polls within one tick so rollouts finish quickly under test.
 os.environ.setdefault("HEALTH_CHECK_FAST", "1")
 os.environ.setdefault("CLUSTER_MODE", "simulated")
 os.environ.setdefault("CONTROL_LOOP_ENABLED", "0")
