@@ -7,7 +7,7 @@
 Measures six services on a real Kubernetes cluster, decides whether each release is safe,
 prices what every incident cost, and proves its own detection works by breaking things on purpose.
 
-[![CI](https://github.com/Ishaana0112/OpsForge-Nexus/actions/workflows/ci.yml/badge.svg)](https://github.com/Ishaana0112/OpsForge-Nexus/actions/workflows/ci.yml)
+[![CI](https://github.com/IshaanS0112/OpsForge-Nexus/actions/workflows/ci.yml/badge.svg)](https://github.com/IshaanS0112/OpsForge-Nexus/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB.svg?logo=python&logoColor=white)](https://www.python.org)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB.svg?logo=react&logoColor=black)](https://react.dev)
@@ -151,7 +151,7 @@ Each decision traces to a published source. Every row maps to its implementation
 Needs Docker with about 3 GB free. The first run creates the Kubernetes cluster.
 
 ```bash
-git clone https://github.com/Ishaana0112/OpsForge-Nexus.git
+git clone https://github.com/IshaanS0112/OpsForge-Nexus.git
 cd OpsForge-Nexus
 docker compose up -d --build
 ```
